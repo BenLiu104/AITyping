@@ -1,0 +1,214 @@
+# PRD — AITyping 產品需求文件
+
+> 版本 0.1 · 2026-06-26 · 狀態：Draft
+> 配合 `AGENTS.md`（怎麼做）。這份講「做什麼、為什麼、做到什麼程度算完成」。
+
+## 1. 產品概述
+
+AITyping 是 iPhone-first 的 PWA 智能語音輸入草稿板。解決：手機打字慢 / 語音輸入轉寫亂（停頓詞、沒標點、中英混雜）。透過 Gemini Live API 即時聽寫 + gemini-3.1-flash-lite 整理，讓用戶「講得隨意，拿到乾淨可用的文字」。
+
+### 1.1 目標 (Goals)
+- **G1**：iPhone Safari 上，按住說話即時看到 transcript。
+- **G2**：放開後 3 秒內出整理好的文字。
+- **G3**：支援中 / 英 / 中英混合 / 粵語口語。
+- **G4**：一鍵複製，方便貼到其他 app。
+- **G5**：VPS-only 開發部署，不需要 Mac。
+
+### 1.2 非目標 (Non-Goals)
+- **N1**：不做系統輸入法 / 第三方鍵盤（Phase 4 才評估）。
+- **N2**：不做背景 / 長時間錄音。
+- **N3**：MVP 不做登入 / 付費 / 多人。
+- **N4**：不做自動貼到其他 app。
+
+## 2. 使用者與場景
+- 主要用戶：Ben（重度手機文字輸入、中英粵混合）。
+- 場景：想到內容 → 開 app → 按住講 → 拿乾淨文字 → 複製到 Telegram / Email / Notes。
+
+## 3. 功能需求 (FR)
+
+| ID | 功能 | 優先級 |
+|---|---|---|
+| FR1 | 按住 mic 收音（push-to-talk） | P0 |
+| FR2 | AudioWorklet 取 PCM、resample 16kHz/Int16 | P0 |
+| FR3 | WebSocket 串流 Gemini Live API | P0 |
+| FR4 | 即時顯示 inputAudioTranscription | P0 |
+| FR5 | 放開 → cleanup → 貼 textarea | P0 |
+| FR6 | 一鍵 copy | P0 |
+| FR7 | Mock 模式（不燒 API 開發） | P0 |
+| FR8 | Cleanup 模式（訊息/Email/TODO/Prompt） | P1 |
+| FR9 | 語言模式 | P1 |
+| FR10 | PWA 安裝（Add to Home Screen） | P1 |
+| FR11 | History / presets | P2 |
+| FR12 | 斷線重連 + buffer | P2 |
+
+## 4. 非功能需求 (NFR)
+- **NFR1 延遲**：partial transcript < 500ms；cleanup < 3s。
+- **NFR2 安全**：API key 只在後端；ephemeral token 有 expiry；CORS 鎖 domain。
+- **NFR3 相容**：iOS 16+ Safari；HTTPS only。
+- **NFR4 可維護**：Gemini 經 adapter；model 名集中在 config。
+- **NFR5 成本**：一般用量每月幾塊（Live + flash-lite）。
+
+## 5. 系統架構
+
+```
+iPhone Safari (PWA)
+  ├─ mic button (push-to-talk)
+  ├─ AudioWorklet → PCM16 @16kHz
+  ├─ Live WS client ──直連──► Gemini Live API（用 ephemeral token）
+  └─ textarea ◄── cleanup result
+        │ 1) POST /api/live-token       │ 3) POST /api/cleanup
+        ▼                               ▼
+  Backend (FastAPI @ VPS, Docker, Caddy HTTPS)
+  ├─ POST /api/live-token  → google-genai 簽 ephemeral token
+  └─ POST /api/cleanup     → gemini-3.1-flash-lite
+        │ (持 GEMINI_API_KEY)
+        ▼
+  Google Gemini API
+```
+
+- **Audio 路徑**：iPhone ──直連──► Gemini Live（低延遲，不經 VPS）。
+- **Cleanup 路徑**：iPhone ► VPS ► Gemini flash-lite。
+
+## 6. API 合約
+
+### 6.1 `POST /api/live-token`
+**Request:** `{}`（MVP 無需參數；Phase 3 加 auth）
+**Response 200:**
+```json
+{
+  "token": "<ephemeral_token>",
+  "expiresAt": "2026-06-26T12:00:00Z",
+  "model": "models/gemini-3.1-flash-live-preview"
+}
+```
+- token 短效（建議 ≤ 10 分鐘 / 單次 session）。
+- 失敗 → `500 { "error": "..." }`。
+
+### 6.2 `POST /api/cleanup`
+**Request:**
+```json
+{
+  "rawTranscript": "string",
+  "mode": "message | email | todo | prompt",
+  "language": "zh-Hant | en | mixed | yue",
+  "style": "natural"
+}
+```
+**Response 200:**
+```json
+{ "cleaned": "string", "mode": "message" }
+```
+- 缺 `rawTranscript` → `422`。
+- model：`gemini-3.1-flash-lite`。
+
+> 改合約 = 同步更新這裡 + 前後端 + test。
+
+## 7. 音訊管線規格 (Audio Pipeline)
+- 取音：`getUserMedia({ audio: { echoCancellation, noiseSuppression, autoGainControl } })`
+- AudioContext：Safari 可能不尊重指定 sampleRate（常給 48000）→ **JS 自己 resample 到 16000**。
+- 格式：Float32 → Int16 little-endian PCM。
+- Chunk：每 100ms 送一次（16000 × 0.1 × 2 = 3200 bytes；base64 ≈ 4.3KB）。
+- Float32 → Int16（參考實作）：
+```js
+function floatTo16BitPCM(f32) {
+  const buf = new ArrayBuffer(f32.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < f32.length; i++) {
+    let s = Math.max(-1, Math.min(1, f32[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buf;
+}
+```
+
+## 8. Gemini Live setup message
+```json
+{
+  "setup": {
+    "model": "models/gemini-3.1-flash-live-preview",
+    "responseModalities": ["TEXT"],
+    "inputAudioTranscription": {},
+    "systemInstruction": {
+      "parts": [{ "text": "Transcribe the user's speech verbatim. Do not answer or converse." }]
+    }
+  }
+}
+```
+送音：
+```json
+{ "realtimeInput": { "audio": { "data": "<BASE64_PCM16>", "mimeType": "audio/pcm;rate=16000" } } }
+```
+> ⚠️ 上線前對一次官方 model list，確認 `gemini-3.1-flash-live-preview` / `gemini-3.1-flash-lite` 是現行名。
+
+## 9. Cleanup prompt 規格
+System prompt（核心）：
+```
+你是語音輸入文字整理器。
+1. 保留原意，不要加新資訊。
+2. 修正聽寫錯字。
+3. 移除停頓詞（呃 / 嗯 / 就是就是）。
+4. 補上自然標點。
+5. 中英混合就保留自然中英混合。
+6. 只輸出可直接貼上的文字，不要解釋。
+```
+模式差異：
+- `message` — 自然簡潔，適合聊天
+- `email` — 禮貌清楚，可直接寄
+- `todo` — 每項動詞開頭
+- `prompt` — 具體可直接餵 AI
+
+## 10. 詳細開發步驟（Phase 1 對應 task）
+
+### Epic A — 後端引擎
+- **A1.** FastAPI skeleton + health route + CORS + config（讀 `.env`）。
+- **A2.** `gemini/` adapter：包 `google-genai`，集中 model 名。
+- **A3.** `POST /api/cleanup`（flash-lite）+ pydantic schema + test。
+- **A4.** `POST /api/live-token`（簽 ephemeral token）+ test。
+- **A5.** Dockerfile + 加入 docker-compose。
+
+### Epic B — 前端骨架
+- **B1.** `npm create vite`（react-ts）+ ESLint/Prettier + vitest + vite-plugin-pwa。
+- **B2.** UI：mic button、transcript preview、result textarea、copy/clear。
+- **B3.** `audio/`：getUserMedia + AudioWorklet processor + resample + Float32→Int16（含 unit test）。
+- **B4.** `live/`：Live WS client（拿 token、setup、送 audio、收 transcription）。
+- **B5.** push-to-talk 串起 B2–B4：按住開 session、放開停。
+- **B6.** 放開 → call `/api/cleanup` → 貼 textarea → copy。
+
+### Epic C — Mock / 開發體驗
+- **C1.** Mock 模式：假 transcript + 假 cleanup（env flag `MOCK_MODE`），不燒 API。
+- **C2.** Audio debug panel：sampleRate / chunk samples / 轉換後 bytes。
+
+### Epic D — 部署
+- **D1.** docker-compose 前後端。
+- **D2.** Caddy 反代 + 自動 HTTPS（或 Cloudflare Tunnel）。
+- **D3.** iPhone 真機測試 + 修 iOS 坑。
+
+## 11. 驗收標準（Phase 1 Done）
+- **AC1.** iPhone Safari 按住講中英混合一句，partial transcript < 500ms 出現。
+- **AC2.** 放開後 < 3s，textarea 出整理好文字。
+- **AC3.** 一鍵 copy 成功。
+- **AC4.** DevTools / bundle 找不到 API key。
+- **AC5.** Mock 模式可以完全不連 Gemini 開發 UI。
+
+## 12. iOS Safari 注意事項
+- AudioContext 要在 touch handler 內 `resume()`。
+- 必須 HTTPS。
+- 背景 / 鎖屏會斷麥 → push-to-talk 前景。
+- standalone PWA 偶有麥克風 regression → 先用普通分頁測穩。
+- 首次要 user gesture 才 request mic 權限。
+
+## 13. 風險登記
+| 風險 | 解法 |
+|---|---|
+| API key 暴露 | ephemeral token，key 留後端 |
+| AudioWorklet / resample 複雜 | 先做最小 pipeline + debug panel + test |
+| Live API preview 變動 | adapter 隔離 + 上線前對 model list |
+| WebSocket 斷線 | local buffer + reconnect（Phase 3） |
+| cleanup 改錯意思 | raw transcript toggle / undo |
+| 燒 API 成本 | Mock 模式開發 |
+
+## 14. 待決問題 (Open Questions)
+- **Q1.** 域名用哪個？Caddy 還是 Cloudflare Tunnel？
+- **Q2.** ephemeral token 由 `google-genai` 哪個 API 簽？上線前驗證。
+- **Q3.** 確認 `gemini-3.1-flash-live-preview` / `gemini-3.1-flash-lite` 現行名。
+- **Q4.** partial transcript 顯示策略（partial vs committed）。

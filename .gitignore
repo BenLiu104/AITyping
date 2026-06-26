@@ -1,0 +1,51 @@
+# ─── Secrets / 環境變數 ───────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-token*.json
+credentials*.json
+
+# ─── Node / 前端 ──────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+*.local
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── Python / 後端 ────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ─── Docker ──────────────────────────────────────────
+*.env.docker
+
+# ─── OS / 編輯器 ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+
+# ─── 雜項 ─────────────────────────────────────────────
+*.log
+tmp/
+.cache/
