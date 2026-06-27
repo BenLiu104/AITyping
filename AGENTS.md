@@ -121,9 +121,76 @@ pytest                          # tests
 - ❌ 一個 PR 又做 feature 又大重構
 - ❌ 改了 API 合約但不更新 `PRD.md`
 
-## 11. 不確定就查哪裡
+## 11. 狀態路由（Agent Resume 流程）
+
+> 每次新對話 / 新 session 開工時，按此流程恢復工作。
+
+```text
+[新對話開始]
+    │
+    ├─ 1. 讀 STATUS.md      ← 確認當前階段、上次做咗咩、下一步
+    │
+    ├─ 2. 讀 ERRORS.md      ← 如有紀錄，避免重複踩已知坑
+    │
+    ├─ 3. 確認工作目標：
+    │     ├─ 跟 STATUS.md 的「下一步要做」
+    │     └─ 或用戶即時指示 > 文件
+    │
+    ├─ 4. 讀 AGENTS.md §1 黃金規則  ← 每次確認
+    │
+    ├─ 5. 根據任務讀對應文件：
+    │     ├─ 要 build / 驗收 → PRD.md
+    │     ├─ 要理解決策原因 → docs/adr/
+    │     ├─ 要 check 閘門 → GATES.md + 跑 bash check.sh
+    │     └─ 要查 iOS 坑 → PRD.md §12
+    │
+    └─ 6. 開始工作
+```
+
+## 12. 工作流程路由（Routing Table）
+
+| 當前步驟 | 需要讀的檔案 | 輸出 / 下一步 |
+|---|---|---|
+| 規劃（Phase 0） | `README` + `PRD` + `docs/adr/` | `STATUS.md` 更新、`Roadmap.md` 更新 |
+| 開發（Phase 1–3） | `PRD.md` §10（對應 Epic）+ `AGENTS.md` §1 | frontend/ 或 backend/ 的代碼 |
+| 驗收 | `GATES.md` + `bash check.sh` | 閘門結果；未過 → 退回對應步驟 |
+| 接續工作 | `STATUS.md` + `ERRORS.md` + 路由表 | 繼續開發 |
+| 重構 / bug fix | `ERRORS.md` + `docs/adr/` + `PRD.md` | fix → update STATUS + check.sh |
+
+## 13. 約束衝突回退協議
+
+當開發中發現約束衝突，**不要繞過它**。退回衝突涉及的最早步驟：
+
+```text
+發現交互設計超出技術邊界
+  → 退回步驟「項目框架」（退回重新確認技術方案）
+
+發現技術約束影響產品範圍
+  → 退回步驟「PRD 規劃」（退回重新確認產品範圍）
+
+發現安全規則被違反（API key 出現、secret 被 commit 等）
+  → 立即停止、修復、review 全部 affected files
+```
+
+**規則：**
+1. 衝突必須用一句話明確標註（例如：「Live API 不支援 48kHz 輸入，需要前端 resample」）。
+2. 標註後由用戶確認，才能繼續。
+3. 不能因為「趕進度」而繞過衝突。
+4. 修復後更新 docs / ADR / ERRORS，確保下次唔會再踩。
+
+## 14. 閘門驗證（Gate Verification）
+
+- 每個 Phase 的完成標準定義在 `GATES.md`。
+- 完成一個 Phase 前必須跑 `bash check.sh`（自動 + 手動閘門全部通過）。
+- 閘門未過 = Phase 未完成 = 唔可以跳下一步。
+- 閘門失敗時記錄到 `ERRORS.md` 然後修復，唔好直接 mark done。
+
+## 15. 不確定就查哪裡
 
 - 要 build 什麼、流程怎麼走 → `PRD.md`
 - 架構決策為什麼這樣選 → `docs/adr/`
 - API 合約 → `PRD.md` §6
 - iOS Safari 坑 → `PRD.md` §12
+- 當前進度、下一步 → `STATUS.md`
+- 已知錯誤 → `ERRORS.md`
+- 驗收閘門 → `GATES.md` + `bash check.sh`
