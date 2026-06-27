@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # check.sh — AITyping 閘門檢查入口
-# 用法:  bash check.sh [phase0|phase1|all]
-#       無參數 = 自動偵測當前階段並跑對應閘門
-set -euo pipefail
+# 用法:  bash check.sh [phase0|phase1|all|auto]
+#       無參數 = auto（自動偵測當前階段）
+# 注意: 刻意唔用 set -e，用 explicit exit handling 避免 grep 等命令非零 exit 提早終止。
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$BASE_DIR"
 
@@ -16,14 +16,14 @@ check_phase0() {
   echo ""
   echo "═══ Phase 0 Gates ═══"
 
-  # G0.1: 14 tracked files
+  # G0.1: 19 tracked files
   count=$(git ls-files 2>/dev/null | wc -l)
-  [ "$count" -eq 14 ] && gate "G0.1 tracked files = $count" || nogate "G0.1 tracked files = $count (expected 14)"
+  [ "$count" -eq 19 ] && gate "G0.1 tracked files = $count" || nogate "G0.1 tracked files = $count (expected 19)"
 
   # G0.2: git healthy
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 && gate "G0.2a inside git repo" || nogate "G0.2a not a git repo"
   [ "$(git branch --show-current)" = "main" ] && gate "G0.2b branch=main" || nogate "G0.2b branch != main"
-  [ -z "$(git status --porcelain)" ] && gate "G0.2c working tree clean" || nogate "G0.2c working tree dirty"
+  [ -z "$(git status --porcelain 2>/dev/null)" ] && gate "G0.2c working tree clean" || nogate "G0.2c working tree dirty"
 
   # G0.3: .env ignored
   git check-ignore .env >/dev/null 2>&1 && gate "G0.3 .env is gitignored" || nogate "G0.3 .env NOT ignored"
@@ -35,8 +35,8 @@ check_phase0() {
 
   # G0.5: core docs code fence balanced
   for f in README.md AGENTS.md PRD.md docs/adr/0001-architecture-decisions.md; do
-    [ -s "$f" ] || { nogate "G0.5 $f missing/empty"; continue; }
-    n=$(grep -c '```' "$f")
+    if [ ! -s "$f" ]; then nogate "G0.5 $f missing/empty"; continue; fi
+    n=$(grep -c '```' "$f" || true)  # grep -c exits 1 on 0 matches, suppress with || true
     [ $((n % 2)) -eq 0 ] && gate "G0.5 $f fences ok ($n)" || nogate "G0.5 $f unbalanced fences ($n)"
   done
 
@@ -44,17 +44,23 @@ check_phase0() {
   grep -q '## 12. 工作流程路由' AGENTS.md && gate "G0.6 AGENTS has routing section" || nogate "G0.6 AGENTS missing routing"
   grep -q '## 13. 約束衝突回退協議' AGENTS.md && gate "G0.6 AGENTS has rollback section" || nogate "G0.6 AGENTS missing rollback"
 
-  # G0.7: STATUS.md readable
+  # G0.7: STATUS.md present + has current phase
   [ -s STATUS.md ] && grep -q '當前階段' STATUS.md && gate "G0.7 STATUS.md present + has current phase" || nogate "G0.7 STATUS.md missing/broken"
+
+  # G0.8: ERRORS.md is a valid table template
+  [ -s ERRORS.md ] && grep -q '| 時間 | 錯誤 | 根因 |' ERRORS.md && gate "G0.8 ERRORS.md template present" || nogate "G0.8 ERRORS.md missing/broken"
+
+  # G0.9: GATES.md has phase definitions
+  [ -s GATES.md ] && grep -q 'Phase 1 — PWA MVP' GATES.md && gate "G0.9 GATES.md has Phase 1 definitions" || nogate "G0.9 GATES.md missing/broken"
 }
 
-# ── Phase 1 gates (preliminary — runnable only when frontend/backend exist) ──
+# ── Phase 1 gates (only runnable when frontend/backend exist) ──
 check_phase1() {
   echo ""
   echo "═══ Phase 1 Gates ═══"
 
   [ -d frontend ] && [ -f frontend/package.json ] && gate "G1.1a frontend/ exists" || nogate "G1.1a frontend/ missing"
-  [ -d backend ]  && [ -f backend/pyproject.toml -o -f backend/requirements.txt ] && gate "G1.1b backend/ exists" || nogate "G1.1b backend/ missing"
+  [ -d backend ]  && [ -f backend/requirements.txt ] && gate "G1.1b backend/ exists" || nogate "G1.1b backend/ missing"
 
   if [ -d frontend ]; then
     (cd frontend && npm run typecheck 2>/dev/null) && gate "G1.2 typecheck passes" || skip "G1.2 typecheck (not runnable yet)"
@@ -81,25 +87,16 @@ check_phase1() {
 mode="${1:-auto}"
 
 case "$mode" in
-  phase0)
-    check_phase0
-    ;;
-  phase1)
-    check_phase1
-    ;;
+  phase0)  check_phase0 ;;
+  phase1)  check_phase1 ;;
   auto)
-    # 自動偵測：如果有 frontend/ + backend/ 就行 phase1，否則 phase0
-    if [ -d frontend ] && [ -f frontend/package.json ] && [ -d backend ]; then
-      check_phase0
-      check_phase1
+    if [ -d frontend ] && [ -f frontend/package.json ]; then
+      check_phase0; check_phase1
     else
       check_phase0
     fi
     ;;
-  all)
-    check_phase0
-    check_phase1
-    ;;
+  all)     check_phase0; check_phase1 ;;
   *)
     echo "用法: bash check.sh [phase0|phase1|all|auto]"
     exit 1
