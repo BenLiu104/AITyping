@@ -40,9 +40,10 @@ check_phase0() {
     [ $((n % 2)) -eq 0 ] && gate "G0.5 $f fences ok ($n)" || nogate "G0.5 $f unbalanced fences ($n)"
   done
 
-  # G0.6: AGENTS has routing + rollback
+  # G0.6: AGENTS has routing + rollback + update rules
   grep -q '## 12. 工作流程路由' AGENTS.md && gate "G0.6 AGENTS has routing section" || nogate "G0.6 AGENTS missing routing"
   grep -q '## 13. 約束衝突回退協議' AGENTS.md && gate "G0.6 AGENTS has rollback section" || nogate "G0.6 AGENTS missing rollback"
+  grep -q '## 15. 文件更新規則' AGENTS.md && gate "G0.6 AGENTS has update-rules section" || nogate "G0.6 AGENTS missing update-rules"
 
   # G0.7: STATUS.md present + has current phase
   [ -s STATUS.md ] && grep -q '當前階段' STATUS.md && gate "G0.7 STATUS.md present + has current phase" || nogate "G0.7 STATUS.md missing/broken"

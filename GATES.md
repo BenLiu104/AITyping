@@ -15,7 +15,7 @@
 | G0.3 | `.env` 不被 git 追蹤 | `check.sh phase0` | ✅ |
 | G0.4 | Tracked 內容無真 API key 模式 | `check.sh phase0` | ✅ |
 | G0.5 | 核心 docs code fence 平衡 | `check.sh phase0` | ✅ |
-| G0.6 | AGENTS 有完整路由 + 回退協議 | `check.sh phase0` | ✅ |
+| G0.6 | AGENTS 有完整路由 + 回退協議 + 更新規則 | `check.sh phase0` | ✅ |
 | G0.7 | STATUS.md 反映當前階段 | 人工確認 | ✅ |
 
 ---

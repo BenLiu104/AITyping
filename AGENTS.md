@@ -185,7 +185,32 @@ pytest                          # tests
 - 閘門未過 = Phase 未完成 = 唔可以跳下一步。
 - 閘門失敗時記錄到 `ERRORS.md` 然後修復，唔好直接 mark done。
 
-## 15. 不確定就查哪裡
+## 15. 文件更新規則（幾時寫 / 幾時更新）
+
+> 路由表教「幾時讀」。呢份教「幾時寫」。agent 改咗嘢但唔更新文件 = 冇完成。
+
+| 文件 | 幾時更新 | 更新什麼 | 誰負責 |
+|---|---|---|---|
+| **STATUS.md** | Phase 轉換時 / 下一步變更時 / 重要進度里程碑 | 當前階段、上次做咗咩、下一步要做、open issues | agent（每次狀態變更後） |
+| **ERRORS.md** | 遇到新 error 時 / 修復舊 error 時 | 新增一行（時間、錯誤、根因、解法、預防）；或補充已有 entry 的 resolution | agent（開發者） |
+| **CHANGELOG.md** | 每個 feature / fix / refactor merge 到 main 時 | 按 Keep a Changelog 格式追加一行 | agent（commit 前） |
+| **PRD.md** | API 合約變更時 / scope 增減時 / NFR 變更時 | §6 API 合約、§3 FR、§4 NFR、§14 Open Questions | agent + user confirm |
+| **GATES.md** | 閘門通過 / 失敗時 / 新 Phase 閘門定義時 | 狀態欄更新；或新增閘門條目 | agent（開發者） |
+| **check.sh** | 新增 / 修改閘門邏輯時 | 相應的 shell check 函數 | agent（開發者） |
+| **AGENTS.md** | 黃金規則變更時（少改） | §1 黃金規則、§5 程式碼規範等 | agent + user confirm |
+| **docs/adr/** | 架構決策有變或被推翻時 | 新增 ADR（直接 append，不修改已 accepted 的 ADR） | agent + user confirm |
+| **.env.example** | 新增環境變數時 | 加入對應 key + 假值註解 | agent（開發者） |
+| **README.md** | 技術棧 / 架構 / 用法有重大變更時 | 對應段落更新 | agent + user confirm |
+| **Roadmap.md** | Phase 完成 / 路線規劃變更時 | 更新 task checklist；或修改階段描述 | agent + user confirm |
+
+**核心原則：**
+1. **改 code 唔改文件 = 唔算完成。** Definition of Done 包括更新相關文件。
+2. **STATUS.md 係最易漏嘅。** 每次 session 結束前順手更新 STATUS.md 嘅「上次做的事」同「下一步要做」。
+3. **ERRORS.md 係最低成本嘅高回報文件。** 踩坑當下記低 3 行，下次 agent resume 自動避開。
+4. **user confirm required 嘅文件**（PRD、ADR、AGENTS golden rules）agent 唔可以自己靜雞雞改，要先話畀 user 聽。
+5. **文件過時 = 引導 agent 做錯決定。** 如果發現呢份文件更新規則本身 outdated，第一時間 update 佢。
+
+## 16. 不確定就查哪裡
 
 - 要 build 什麼、流程怎麼走 → `PRD.md`
 - 架構決策為什麼這樣選 → `docs/adr/`
@@ -194,3 +219,4 @@ pytest                          # tests
 - 當前進度、下一步 → `STATUS.md`
 - 已知錯誤 → `ERRORS.md`
 - 驗收閘門 → `GATES.md` + `bash check.sh`
+- 文件更新規則 → `AGENTS.md` §15

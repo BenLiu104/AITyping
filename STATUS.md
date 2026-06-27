@@ -21,6 +21,7 @@
 ## 上次做的事
 
 吸收 VibeCoding 線性框架設計原則：STATUS.md / ERRORS.md / GATES.md + check.sh / 路由 + 回退協議。
+加入 AGENTS.md §15 文件更新規則（幾時寫 / 幾時更新）。
 
 ## 下一步要做
 
