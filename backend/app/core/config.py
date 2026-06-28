@@ -29,6 +29,7 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             # 如果 .env 傳入的是像 ["http://foo"] 這種 JSON 字串，先嘗試解析，不然就逗號分割
             import json
+
             v_stripped = v.strip()
             if v_stripped.startswith("[") and v_stripped.endswith("]"):
                 try:

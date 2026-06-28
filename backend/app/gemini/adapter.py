@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 from google import genai
 from google.genai import types
@@ -19,7 +18,9 @@ class GeminiAdapter:
         # 除非是 mock_mode 且無 API key，否則初始化 client
         if not self.mock_mode:
             if not self.api_key or self.api_key == "your_gemini_api_key_here":
-                raise ValueError("無法初始化 Gemini Client：API Key 缺失。請於 .env 設定 GEMINI_API_KEY。")
+                raise ValueError(
+                    "無法初始化 Gemini Client：API Key 缺失。請於 .env 設定 GEMINI_API_KEY。"
+                )
             self.client = genai.Client(api_key=self.api_key)
         else:
             self.client = None
@@ -40,13 +41,17 @@ class GeminiAdapter:
         若處於 Mock 模式，則回傳模擬 Token。
         """
         ttl = ttl_seconds or settings.LIVE_TOKEN_TTL
-        
+
         if self.mock_mode:
             import datetime
+
             return {
                 "token": "mock_ephemeral_token_xyz123",
-                "expiresAt": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=ttl)).isoformat(),
-                "model": self.get_live_model_name()
+                "expiresAt": (
+                    datetime.datetime.now(datetime.timezone.utc)
+                    + datetime.timedelta(seconds=ttl)
+                ).isoformat(),
+                "model": self.get_live_model_name(),
             }
 
         if self.client is None:
@@ -59,22 +64,25 @@ class GeminiAdapter:
             try:
                 # 這裡我們先封裝標準呼叫。
                 response = self.client.models.create_web_token(
-                    model=self.get_live_model_name(),
-                    ttl=f"{ttl}s"
+                    model=self.get_live_model_name(), ttl=f"{ttl}s"
                 )
                 return {
                     "token": response.token,
                     "expiresAt": response.expires_at,
-                    "model": self.get_live_model_name()
+                    "model": self.get_live_model_name(),
                 }
-            except (AttributeError, Exception) as e:
+            except (AttributeError, Exception):
                 # 降級/回退處理：如果 SDK 不支持或當前 API Key 不允許簽發短效 Token（例如第三方/NVIDIA/自備 API 密鑰）
                 # 我們直接安全的將原 GEMINI_API_KEY 作為 Token 返回給前端直連
                 import datetime
+
                 return {
                     "token": self.api_key,
-                    "expiresAt": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=ttl)).isoformat(),
-                    "model": self.get_live_model_name()
+                    "expiresAt": (
+                        datetime.datetime.now(datetime.timezone.utc)
+                        + datetime.timedelta(seconds=ttl)
+                    ).isoformat(),
+                    "model": self.get_live_model_name(),
                 }
 
         except APIError as e:
@@ -115,7 +123,7 @@ class GeminiAdapter:
             "message": "模式：社群聊天/訊息。請使用口語化、自然簡潔的文字，就像一般在 WhatsApp/Telegram 聊天一樣。",
             "email": "模式：電子郵件。請使用禮貌、客氣、結構清楚且專業的書面商業格式與語氣。",
             "todo": "模式：待辦清單/TODO。請整理成以動詞或清晰動作開頭的待辦條目，使用「- [ ]」列表格式。",
-            "prompt": "模式：AI Prompt。請將用戶雜亂的想法整理成一段具體、清晰、邏輯分明、可直接拿來餵給 AI（例如 ChatGPT/Claude）的優質 Prompt。"
+            "prompt": "模式：AI Prompt。請將用戶雜亂的想法整理成一段具體、清晰、邏輯分明、可直接拿來餵給 AI（例如 ChatGPT/Claude）的優質 Prompt。",
         }
 
         # 針對不同語言的提示
@@ -123,14 +131,14 @@ class GeminiAdapter:
             "zh-Hant": "語言：繁體中文。請確保輸出完全為流暢的繁體中文（台灣/香港常用用語）。",
             "en": "語言：英文。請確保輸出完全為流暢專業的英文。",
             "mixed": "語言：中英混合。請保留原本自然的「中英混合」夾雜特點，不要強行翻譯專有名詞（如 iPhone、meeting、App 等），確保半形空格與前後中文相接自然。",
-            "yue": "語言：粵語轉書面。用戶口述的是廣東話/粵語，請在保留原意與語氣的前提下，將其「粵語口語」翻譯並整理成得體、通順的「繁體中文書面語」（將「唔好」轉為「不要」、「佢哋」轉為「他們」等）。"
+            "yue": "語言：粵語轉書面。用戶口述的是廣東話/粵語，請在保留原意與語氣的前提下，將其「粵語口語」翻譯並整理成得體、通順的「繁體中文書面語」（將「唔好」轉為「不要」、「佢哋」轉為「他們」等）。",
         }
 
         user_content = (
             f"{mode_prompts.get(mode, mode_prompts['message'])}\n"
             f"{language_prompts.get(language, language_prompts['mixed'])}\n\n"
             f"原始聽寫文字如下：\n"
-            f"\"\"\"\n{raw_transcript}\n\"\"\""
+            f'"""\n{raw_transcript}\n"""'
         )
 
         try:
@@ -139,15 +147,15 @@ class GeminiAdapter:
                 contents=user_content,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
-                    temperature=0.2, # 降低隨機性，保證準確
-                )
+                    temperature=0.2,  # 降低隨機性，保證準確
+                ),
             )
-            
+
             # 確保獲取 response.text 並且其不為 None
             raw_result = response.text
             if not raw_result:
                 return ""
-                
+
             cleaned_text = raw_result.strip()
             # 防範模型頑固地返回 ``` 包裹
             if cleaned_text.startswith("```") and cleaned_text.endswith("```"):
@@ -155,7 +163,7 @@ class GeminiAdapter:
                 lines = cleaned_text.split("\n")
                 if len(lines) >= 3:
                     cleaned_text = "\n".join(lines[1:-1]).strip()
-            
+
             return cleaned_text
 
         except APIError as e:

@@ -13,6 +13,7 @@ dist/
 dist-ssr/
 build/
 .vite/
+*.tsbuildinfo
 *.local
 .eslintcache
 npm-debug.log*

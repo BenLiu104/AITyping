@@ -1,6 +1,6 @@
 /**
  * Gemini Live API WebSocket Client
- * 
+ *
  * 負責處理與 Google Gemini Live WebSocket 雙向串流連線 (PRD §8)
  */
 
@@ -9,14 +9,33 @@ export interface LiveClientConfig {
   model: string;
   onTranscription: (text: string, isFinal: boolean) => void;
   onError: (error: string) => void;
-  onClose: () => void;
+  onClose: (code?: number, reason?: string) => void;
   onOpen?: () => void;
+  onSetupComplete?: () => void;
+  onAudioSent?: () => void;
 }
+
+type AudioMessage = {
+  realtimeInput: {
+    audio: {
+      mimeType: string;
+      data: string;
+    };
+  };
+};
 
 export class LiveClient {
   private ws: WebSocket | null = null;
   private config: LiveClientConfig;
   private isConnected = false;
+  private isSetupComplete = false;
+  private pendingAudioMessages: AudioMessage[] = [];
+  private pendingAudioStreamEnd = false;
+  // AudioWorklet commonly emits 128-frame render quanta. At 48kHz that is only
+  // ~2.7ms before resampling, so a 50-message setup buffer loses nearly all
+  // speech when Live setup takes >150ms. Keep roughly 5s to preserve the user's
+  // first words while still bounding memory.
+  private readonly maxPendingAudioMessages = 2000;
 
   constructor(config: LiveClientConfig) {
     this.config = config;
@@ -28,10 +47,9 @@ export class LiveClient {
   public connect() {
     try {
       const modelName = this.config.model;
-      // Google Gemini Live WebSocket URL format:
-      // wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent
-      // With ephemeral token sent via bearer query parameter or header (API key matches query param, bearer is standard)
-      const baseUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
+      // Direct API-key WebSocket auth uses v1beta. The v1alpha constrained
+      // endpoint is only for true ephemeral access_token auth.
+      const baseUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
       const wsUrl = `${baseUrl}?key=${this.config.token}`;
 
       this.ws = new WebSocket(wsUrl);
@@ -45,7 +63,7 @@ export class LiveClient {
       };
 
       this.ws.onmessage = (event) => {
-        this.handleMessage(event);
+        void this.handleMessage(event);
       };
 
       this.ws.onerror = (event) => {
@@ -54,9 +72,12 @@ export class LiveClient {
       };
 
       this.ws.onclose = (event) => {
-        this.isConnected = false;
+        this.resetConnectionState();
         console.log("Gemini WS Closed:", event);
-        this.config.onClose();
+        if (event.code !== 1000 && event.reason) {
+          this.config.onError(`Gemini Live 連線關閉 (${event.code}): ${event.reason}`);
+        }
+        this.config.onClose(event.code, event.reason);
       };
     } catch (err: any) {
       this.config.onError(`連線初始化失敗: ${err.message || err}`);
@@ -71,7 +92,7 @@ export class LiveClient {
       this.ws.close();
       this.ws = null;
     }
-    this.isConnected = false;
+    this.resetConnectionState();
   }
 
   /**
@@ -83,28 +104,47 @@ export class LiveClient {
       return;
     }
 
-    // Convert ArrayBuffer to Base64 string
     const bytes = new Uint8Array(pcmBuffer);
     let binary = "";
     const len = bytes.byteLength;
     for (let i = 0; i < len; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
-    const base64Data = btoa(binary);
 
-    // Build real-time input message format
-    const message = {
+    const message: AudioMessage = {
       realtimeInput: {
-        mediaChunks: [
-          {
-            mimeType: "audio/pcm;rate=16000",
-            data: base64Data
-          }
-        ]
-      }
+        audio: {
+          mimeType: "audio/pcm;rate=16000",
+          data: btoa(binary),
+        },
+      },
     };
 
-    this.ws.send(JSON.stringify(message));
+    if (!this.isSetupComplete) {
+      this.pendingAudioMessages.push(message);
+      if (this.pendingAudioMessages.length > this.maxPendingAudioMessages) {
+        this.pendingAudioMessages.shift();
+      }
+      return;
+    }
+
+    this.sendAudioMessage(message);
+  }
+
+  /**
+   * 通知 Live API mic stream 已完結，讓 server 做 final VAD / transcription flush。
+   */
+  public sendAudioStreamEnd() {
+    if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    if (!this.isSetupComplete) {
+      this.pendingAudioStreamEnd = true;
+      return;
+    }
+
+    this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
   }
 
   /**
@@ -119,23 +159,26 @@ export class LiveClient {
       setup: {
         model: model,
         generationConfig: {
-          responseModalities: ["TEXT"],
+          // gemini-3.1-flash-live-preview rejects TEXT response modality with 1007.
+          // We only need the input audio transcription; model audio output can be ignored.
+          responseModalities: ["AUDIO"],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: "Aoede" // 預設聲音，雖然我們只拿 TEXT
-              }
-            }
-          }
+                voiceName: "Aoede",
+              },
+            },
+          },
         },
         systemInstruction: {
           parts: [
             {
-              text: "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word."
-            }
-          ]
-        }
-      }
+              text: "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.",
+            },
+          ],
+        },
+        inputAudioTranscription: {},
+      },
     };
 
     this.ws.send(JSON.stringify(setupMessage));
@@ -144,30 +187,89 @@ export class LiveClient {
   /**
    * 處理 WebSocket 接收到的即時訊息
    */
-  private handleMessage(event: MessageEvent) {
+  private async handleMessage(event: MessageEvent) {
     try {
-      const response = JSON.parse(event.data);
+      const text = typeof event.data === 'string'
+        ? event.data
+        : await this.readMessageText(event.data);
+      const response = JSON.parse(text);
 
-      // Gemini Live API response structure contains 'serverContent'
+      if (response.setupComplete) {
+        this.isSetupComplete = true;
+        this.config.onSetupComplete?.();
+        this.flushPendingAudio();
+        return;
+      }
+
+      // Gemini Live API response structure contains 'serverContent'.
       if (response.serverContent) {
-        const { modelTurn, turnComplete, interrupted } = response.serverContent;
+        const { modelTurn, turnComplete, interrupted, inputTranscription } = response.serverContent;
 
         if (interrupted) {
           // 被打斷，通常在雙向語音時發生
           return;
         }
 
+        // This is model output text. Kept for compatibility, but input speech
+        // transcription is delivered separately as inputTranscription.
         if (modelTurn && modelTurn.parts) {
           for (const part of modelTurn.parts) {
             if (part.text) {
-              // 獲取部分聽寫內容，傳遞給前端 UI
               this.config.onTranscription(part.text, turnComplete || false);
             }
           }
+        }
+
+        if (inputTranscription?.text) {
+          this.config.onTranscription(inputTranscription.text, true);
         }
       }
     } catch (err) {
       console.error("Error parsing Gemini WS message:", err);
     }
+  }
+
+  private async readMessageText(data: MessageEvent['data']): Promise<string> {
+    if (typeof data === 'string') {
+      return data;
+    }
+    if (data instanceof Blob) {
+      return await data.text();
+    }
+    if (data instanceof ArrayBuffer) {
+      return new TextDecoder().decode(data);
+    }
+    return String(data);
+  }
+
+  private flushPendingAudio() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    for (const message of this.pendingAudioMessages) {
+      this.sendAudioMessage(message);
+    }
+    this.pendingAudioMessages = [];
+
+    if (this.pendingAudioStreamEnd) {
+      this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+      this.pendingAudioStreamEnd = false;
+    }
+  }
+
+  private sendAudioMessage(message: AudioMessage) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    this.ws.send(JSON.stringify(message));
+    this.config.onAudioSent?.();
+  }
+
+  private resetConnectionState() {
+    this.isConnected = false;
+    this.isSetupComplete = false;
+    this.pendingAudioMessages = [];
+    this.pendingAudioStreamEnd = false;
   }
 }

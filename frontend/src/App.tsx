@@ -4,16 +4,43 @@ import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient } from './live/live-client';
 
+const BUILD_LABEL = 'v09:23';
+
+type LiveDebugSnapshot = {
+  wsOpen: boolean;
+  setupComplete: boolean;
+  audioChunks: number;
+  audioBytes: number;
+  audioSent: number;
+  transcriptEvents: number;
+  lastCloseCode?: number;
+  lastCloseReason: string;
+  lastError: string;
+};
+
+const createDebugSnapshot = (): LiveDebugSnapshot => ({
+  wsOpen: false,
+  setupComplete: false,
+  audioChunks: 0,
+  audioBytes: 0,
+  audioSent: 0,
+  transcriptEvents: 0,
+  lastCloseReason: '',
+  lastError: '',
+});
+
 export default function App() {
   // Settings & Options state
   const [mode, setMode] = useState<Mode>('message');
   const [language, setLanguage] = useState<Language>('mixed');
-  const [mockMode, setMockMode] = useState<boolean>(true); // Default to mock mode for easy development/safety
+  const [mockMode, setMockMode] = useState<boolean>(false);
 
   // Core status state
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [interimTranscript, setInterimTranscript] = useState<string>('');
   const [finalTranscript, setFinalTranscript] = useState<string>('');
+  const [liveStatus, setLiveStatus] = useState<string>('');
+  const [liveDebug, setLiveDebug] = useState<LiveDebugSnapshot>(() => createDebugSnapshot());
   const [cleanedText, setCleanedText] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -28,6 +55,11 @@ export default function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const liveClientRef = useRef<LiveClient | null>(null);
+  const transcriptRef = useRef<string>('');
+  const isPrimingMicPermissionRef = useRef<boolean>(false);
+  const isMicPrimedForSessionRef = useRef<boolean>(false);
+  const isCaptureActiveRef = useRef<boolean>(false);
+  const liveDebugRef = useRef<LiveDebugSnapshot>(createDebugSnapshot());
 
   // Mock Mode generator timeout ref
   const mockIntervalRef = useRef<any>(null);
@@ -49,8 +81,10 @@ export default function App() {
     };
   }, []);
 
-  const cleanupAudioPipeline = () => {
+  const cleanupAudioPipeline = (disconnectLiveClient = true) => {
+    isCaptureActiveRef.current = false;
     if (audioWorkletNodeRef.current) {
+      audioWorkletNodeRef.current.port.onmessage = null;
       audioWorkletNodeRef.current.disconnect();
       audioWorkletNodeRef.current = null;
     }
@@ -64,7 +98,7 @@ export default function App() {
       }
       audioContextRef.current = null;
     }
-    if (liveClientRef.current) {
+    if (disconnectLiveClient && liveClientRef.current) {
       liveClientRef.current.disconnect();
       liveClientRef.current = null;
     }
@@ -73,6 +107,66 @@ export default function App() {
   const triggerVibe = (ms: number) => {
     if (vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(ms);
+    }
+  };
+
+  const waitForTranscript = async (timeoutMs: number) => {
+    const startedAt = Date.now();
+    while (!transcriptRef.current.trim() && Date.now() - startedAt < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  };
+
+  const requestMicStream = () => navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    }
+  });
+
+  const resetDebugSnapshot = () => {
+    liveDebugRef.current = createDebugSnapshot();
+    setLiveDebug(liveDebugRef.current);
+  };
+
+  const updateDebugSnapshot = (patch: Partial<LiveDebugSnapshot>) => {
+    liveDebugRef.current = { ...liveDebugRef.current, ...patch };
+    setLiveDebug(liveDebugRef.current);
+  };
+
+  const postDebugEvent = async (phase: string) => {
+    const snapshot = liveDebugRef.current;
+    try {
+      await fetch('/api/debug-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase, build: BUILD_LABEL, ...snapshot }),
+      });
+    } catch {
+      // Debug telemetry must never break the recording flow.
+    }
+  };
+
+  const primeMicPermission = async () => {
+    if (isPrimingMicPermissionRef.current) return;
+
+    isPrimingMicPermissionRef.current = true;
+    setErrorMsg('');
+    setLiveStatus('正在請求麥克風授權...');
+
+    try {
+      const stream = await requestMicStream();
+      stream.getTracks().forEach(track => track.stop());
+      isMicPrimedForSessionRef.current = true;
+      setLiveStatus('麥克風已授權，請重新點一下開始錄音');
+      triggerVibe(30);
+    } catch (err: any) {
+      setLiveStatus('');
+      setErrorMsg(err.message || '麥克風授權失敗，請允許 Safari 使用麥克風');
+    } finally {
+      isPrimingMicPermissionRef.current = false;
+      setIsRecording(false);
     }
   };
 
@@ -181,26 +275,26 @@ export default function App() {
   // Real Audio Pipeline Setup (iOS Safari Compliant)
   const startRealRecording = async () => {
     setErrorMsg('');
-    setInterimTranscript('正在連線 Live API...');
+    setLiveStatus('正在連線 Live API...');
+    resetDebugSnapshot();
+    setInterimTranscript('');
     setFinalTranscript('');
+    transcriptRef.current = '';
 
     try {
-      // 1. Get Ephemeral Token from backend (A4)
+      // 1. Request mic permission first. iOS Safari is strict: getUserMedia must
+      // stay directly inside the user gesture path, before unrelated awaits.
+      const stream = await requestMicStream();
+      mediaStreamRef.current = stream;
+      isCaptureActiveRef.current = true;
+
+      // 2. Get Ephemeral Token from backend (A4)
+      setLiveStatus('正在連線 Live API...');
       const tokenRes = await fetch('/api/live-token', { method: 'POST' });
       if (!tokenRes.ok) {
-        throw new Error('無法取得連線 Token (Live Token API 呼召失敗)');
+        throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
       }
       const tokenData = await tokenRes.json();
-
-      // 2. Request mic permission
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        }
-      });
-      mediaStreamRef.current = stream;
 
       // 3. Initialize AudioContext (iOS Safari requires User Gesture which is satisfied here)
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -217,22 +311,40 @@ export default function App() {
         token: tokenData.token,
         model: tokenData.model,
         onOpen: () => {
-          setInterimTranscript('連線成功，請開始說話...');
+          updateDebugSnapshot({ wsOpen: true });
+          setLiveStatus('Live API 已連線，正在準備聽寫...');
+        },
+        onSetupComplete: () => {
+          updateDebugSnapshot({ setupComplete: true });
+          setLiveStatus('連線成功，請開始說話...');
+        },
+        onAudioSent: () => {
+          updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
         },
         onTranscription: (text, isFinal) => {
+          updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
+          setLiveStatus('');
           if (isFinal) {
-            setFinalTranscript(prev => prev + text);
+            transcriptRef.current += text;
+            setFinalTranscript(transcriptRef.current);
             setInterimTranscript('');
           } else {
             setInterimTranscript(text);
           }
         },
         onError: (err) => {
+          updateDebugSnapshot({ lastError: err });
+          void postDebugEvent('error');
+          if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
+            return;
+          }
           setErrorMsg(err);
           cleanupAudioPipeline();
           setIsRecording(false);
         },
-        onClose: () => {
+        onClose: (code, reason) => {
+          updateDebugSnapshot({ lastCloseCode: code, lastCloseReason: reason || '' });
+          void postDebugEvent('close');
           console.log('WS Connection closed.');
         }
       });
@@ -248,10 +360,15 @@ export default function App() {
 
       // Pipe Float32 buffer array data from worklet node
       workletNode.port.onmessage = (event) => {
+        if (!isCaptureActiveRef.current) return;
         const float32Data = event.data;
         // Resample and convert
         const resampled = resampleTo16k(float32Data, inputSampleRate);
         const pcmBuffer = floatTo16BitPCM(resampled);
+        updateDebugSnapshot({
+          audioChunks: liveDebugRef.current.audioChunks + 1,
+          audioBytes: liveDebugRef.current.audioBytes + pcmBuffer.byteLength,
+        });
         // Send via live WebSocket Client
         client.sendAudioChunk(pcmBuffer);
       };
@@ -268,17 +385,30 @@ export default function App() {
   };
 
   const stopRealRecording = async () => {
-    // Collect the final text accumulated
-    const finalText = finalTranscript || interimTranscript;
-    
-    // Shutdown streaming pipeline
-    cleanupAudioPipeline();
+    liveClientRef.current?.sendAudioStreamEnd();
+
+    // Stop local capture immediately, but keep the WebSocket alive briefly so
+    // Gemini can flush the final inputTranscription after audioStreamEnd.
+    cleanupAudioPipeline(false);
+    setLiveStatus('正在等待最後聽寫...');
+    await waitForTranscript(3500);
+
+    const finalText = transcriptRef.current || finalTranscript || interimTranscript;
+
+    if (liveClientRef.current) {
+      liveClientRef.current.disconnect();
+      liveClientRef.current = null;
+    }
 
     if (!finalText.trim()) {
+      await postDebugEvent('no-transcript');
       setIsLoading(false);
+      setLiveStatus('未收到聽寫文字，請再試一次或講近一點');
       return;
     }
 
+    await postDebugEvent('transcript-ready');
+    setLiveStatus('');
     setIsLoading(true);
     triggerVibe(50);
 
@@ -293,30 +423,36 @@ export default function App() {
     }
   };
 
-  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+  const handleMicPress = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    if (isRecording) return;
-    
+
+    if (isRecording) {
+      setIsRecording(false);
+      if (mockMode) {
+        void stopMockRecording();
+      } else {
+        void stopRealRecording();
+      }
+      return;
+    }
+
+    if (!mockMode && !isMicPrimedForSessionRef.current) {
+      void primeMicPermission();
+      return;
+    }
+
     setIsRecording(true);
     setCleanedText('');
     setFinalTranscript('');
+    setInterimTranscript('');
+    setLiveStatus('');
+    resetDebugSnapshot();
+    transcriptRef.current = '';
     
     if (mockMode) {
       startMockRecording();
     } else {
       startRealRecording();
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent | React.MouseEvent) => {
-    e.preventDefault();
-    if (!isRecording) return;
-    
-    setIsRecording(false);
-    if (mockMode) {
-      stopMockRecording();
-    } else {
-      stopRealRecording();
     }
   };
 
@@ -339,6 +475,9 @@ export default function App() {
     setInterimTranscript('');
     setCleanedText('');
     setErrorMsg('');
+    setLiveStatus('');
+    resetDebugSnapshot();
+    transcriptRef.current = '';
     triggerVibe(30);
   };
 
@@ -352,6 +491,7 @@ export default function App() {
           <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-[#a1a1aa] bg-clip-text text-transparent">
             AITyping
           </h1>
+          <span className="text-[10px] text-[#8e8e93]">{BUILD_LABEL}</span>
           {mockMode && (
             <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-semibold border border-amber-500/30">
               MOCK
@@ -412,24 +552,34 @@ export default function App() {
               <span className="text-sm font-medium text-white">沙盒/模擬模式 (Mock)</span>
               <span className="text-xs text-[#8e8e93]">(不消耗 API 金鑰額度)</span>
             </div>
-            <button 
-              onClick={() => { setMockMode(!mockMode); triggerVibe(20); }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${mockMode ? 'bg-amber-500' : 'bg-zinc-700'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${mockMode ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+            <label className="relative inline-flex h-8 w-14 cursor-pointer items-center rounded-full">
+              <input
+                type="checkbox"
+                checked={mockMode}
+                onChange={(event) => { setMockMode(event.target.checked); triggerVibe(20); }}
+                className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                aria-label="切換沙盒模擬模式"
+              />
+              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-700 transition-colors peer-checked:bg-amber-500" />
+              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-6" />
+            </label>
           </div>
 
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-white">觸覺震動回饋 (Haptics)</span>
             </div>
-            <button 
-              onClick={() => { setVibrationEnabled(!vibrationEnabled); triggerVibe(20); }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${vibrationEnabled ? 'bg-blue-500' : 'bg-zinc-700'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vibrationEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+            <label className="relative inline-flex h-8 w-14 cursor-pointer items-center rounded-full">
+              <input
+                type="checkbox"
+                checked={vibrationEnabled}
+                onChange={(event) => { setVibrationEnabled(event.target.checked); triggerVibe(20); }}
+                className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                aria-label="切換觸覺震動回饋"
+              />
+              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-700 transition-colors peer-checked:bg-blue-500" />
+              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-6" />
+            </label>
           </div>
         </section>
       )}
@@ -451,10 +601,15 @@ export default function App() {
           <div className="flex-1 text-sm leading-relaxed text-zinc-300">
             {finalTranscript || interimTranscript ? (
               <p>{finalTranscript || interimTranscript}</p>
+            ) : liveStatus ? (
+              <p className="text-[#8e8e93] italic">{liveStatus}</p>
             ) : (
-              <p className="text-[#8e8e93] italic">按住底部 Mic 按鈕並開始說話，語音聽寫草稿將在此即時浮現...</p>
+              <p className="text-[#8e8e93] italic">點一下底部 Mic 開始錄音，再點一下停止並整理...</p>
             )}
           </div>
+          <p className="mt-2 text-[10px] text-[#6b7280]">
+            debug {BUILD_LABEL}: ws={liveDebug.wsOpen ? '1' : '0'} setup={liveDebug.setupComplete ? '1' : '0'} chunks={liveDebug.audioChunks} bytes={liveDebug.audioBytes} sent={liveDebug.audioSent} tx={liveDebug.transcriptEvents} close={liveDebug.lastCloseCode ?? '-'}
+          </p>
         </div>
 
         {/* CLEANED OUTPUT PANEL */}
@@ -495,7 +650,7 @@ export default function App() {
             <textarea
               value={cleanedText}
               onChange={(e) => setCleanedText(e.target.value)}
-              placeholder="放開 Mic 按鈕後，Gemini 就會自動修剪贅字、多餘口頭禪，並把精準段落文字呈現於此..."
+              placeholder="停止錄音後，Gemini 就會自動修剪贅字、多餘口頭禪，並把精準段落文字呈現於此..."
               className="w-full h-full bg-transparent text-white border-none outline-none resize-none text-base leading-relaxed placeholder:text-[#555] placeholder:italic"
             />
           </div>
@@ -528,7 +683,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* RECORDING CONTROLLER AREA (PUSH-TO-TALK) */}
+        {/* RECORDING CONTROLLER AREA (TAP-TO-TOGGLE) */}
         <div className="flex flex-col items-center justify-center py-4 space-y-3">
           <div className="relative">
             {/* Pulsing radar effects when recording */}
@@ -540,24 +695,21 @@ export default function App() {
             )}
 
             <button
-              onMouseDown={handleTouchStart}
-              onMouseUp={handleTouchEnd}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
+              onPointerDown={handleMicPress}
               className={`w-24 h-24 rounded-full flex items-center justify-center relative z-10 transition-all active:scale-90 select-none ${
                 isRecording 
                   ? 'bg-red-500 text-white scale-105 shadow-2xl shadow-red-500/20' 
                   : 'bg-gradient-to-tr from-blue-600 to-blue-500 text-white shadow-xl shadow-blue-600/20 hover:shadow-blue-600/30'
               }`}
               style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
-              aria-label="按住說話"
+              aria-label={isRecording ? '停止錄音並整理' : '點一下開始錄音'}
             >
               <Mic className={`w-10 h-10 ${isRecording ? 'animate-pulse' : ''}`} />
             </button>
           </div>
 
           <p className="text-xs font-semibold text-[#8e8e93] select-none uppercase tracking-widest text-center">
-            {isRecording ? '🎤 放開立即進行智能整理' : '👆 按住說話 · 放開整理'}
+            {isRecording ? '🎤 錄音中 · 再點一下停止整理' : '👆 點一下開始錄音 · 再點一下停止'}
           </p>
         </div>
 

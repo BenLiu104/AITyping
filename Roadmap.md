@@ -22,9 +22,11 @@
 
 ---
 
-## Phase 1 — PWA MVP（核心引擎）
+## Phase 1 — PWA MVP（核心引擎）✅
 
-**目標：** iPhone Safari 打開 → 按住說話 → 即時 transcript → 放開 cleanup → textarea → 一鍵 copy。一條 happy path 跑通。
+**目標：** iPhone Safari / Home Screen PWA 打開 → tap-to-toggle 錄音 → 即時 transcript → 停止後 cleanup → textarea → 一鍵 copy。一條 happy path 跑通。
+
+**狀態：** `v09:23` 已由 Ben 實機確認基本流程跑通，且 Home Screen PWA false-positive WebSocket error 已消失。
 
 ### 前端
 - [x] Vite + React + TS + `vite-plugin-pwa` 腳手架 (B1)
@@ -33,7 +35,8 @@
 - [x] Float32 → 16kHz Int16 PCM resample（含 unit test） (B3)
 - [x] WebSocket 接 Gemini Live API（用後端發 token） (B4)
 - [x] 解析 `inputAudioTranscription`，即時更新草稿 (B4)
-- [x] 放開 → 呼叫 `/api/cleanup` → 貼結果 (B5/B6)
+- [x] 停止錄音 → 呼叫 `/api/cleanup` → 貼結果 (B5/B6)
+- [x] Mic UX 改為 tap-to-toggle：點一下開始、放手繼續、再點一下停止
 
 ### 後端
 - [x] FastAPI app skeleton + health route + CORS + config（讀 `.env`）。
@@ -43,23 +46,24 @@
 - [x] Dockerfile + 加入 docker-compose。
 
 ### 部署
-- [ ] Dockerfile（前後端）+ docker-compose
-- [ ] Caddy / Cloudflare Tunnel HTTPS
-- [ ] iPhone 實機測試
+- [x] Dockerfile（前後端）+ docker-compose
+- [x] Cloudflare Tunnel HTTPS（host systemd `cloudflared.service`）
+- [x] iPhone / Home Screen PWA 實機測試基本流程通過 (`v09:23`)
 
-**Exit criteria：** 在 iPhone Safari 真機，講一句中英混合，3 秒內 textarea 出乾淨文字，可以 copy。
+**Exit criteria：** 在 iPhone Safari / Home Screen PWA 真機，講一句中英混合，停止後 3 秒內 textarea 出乾淨文字，可以 copy。✅ `v09:23` 已達成基本 happy path。
 
 ---
 
-## Phase 2 — PWA 打磨（變得好用）（✅ 部分提前於 Phase 1 MVP 實作）
+## Phase 2 — PWA 打磨（變得好用）🎯 Current
 
 - [x] Cleanup 模式：訊息 / Email / TODO / Prompt（B2/B6 提前實作）
 - [x] 語言模式：繁中 / 英文 / 中英混合 / 粵語口語 → 書面（B2/B6 提前實作）
 - [ ] 即時 partial vs committed transcript 分離（避免跳動）
 - [ ] History（本地）、prompt presets / favorites
 - [x] Auto-copy after cleanup、震動回饋（B2/B6 提前實作）
-- [ ] Cancel gesture（上滑取消）
+- [ ] Cancel flow（tap-to-toggle 後優先考慮 Cancel button，而非上滑手勢）
 - [ ] Raw transcript toggle / undo（讓用戶信任 cleanup）
+- [ ] Debug counters 隱藏或改為 debug mode
 
 **Exit criteria：** 每天都願意打開來用，cleanup 準到不用再手動改。
 

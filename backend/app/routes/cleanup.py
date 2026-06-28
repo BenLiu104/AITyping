@@ -63,7 +63,4 @@ async def cleanup_transcript_route(
         )
         return CleanupResponse(cleaned=cleaned_text, mode=payload.mode)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"文字優化整理失敗: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"文字優化整理失敗: {str(e)}")

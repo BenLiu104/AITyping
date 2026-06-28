@@ -16,9 +16,16 @@ check_phase0() {
   echo ""
   echo "═══ Phase 0 Gates ═══"
 
-  # G0.1: 19 tracked files
-  count=$(git ls-files 2>/dev/null | wc -l)
-  [ "$count" -eq 19 ] && gate "G0.1 tracked files = $count" || nogate "G0.1 tracked files = $count (expected 19)"
+  # G0.1: required core files exist; repo may contain implementation files after Phase 0.
+  required_files=(
+    README.md Roadmap.md AGENTS.md PRD.md GATES.md STATUS.md ERRORS.md CHANGELOG.md
+    .gitignore .env.example .editorconfig docs/adr/0001-architecture-decisions.md
+  )
+  missing=0
+  for f in "${required_files[@]}"; do
+    [ -s "$f" ] || missing=$((missing+1))
+  done
+  [ "$missing" -eq 0 ] && gate "G0.1 core governance files present" || nogate "G0.1 missing/empty core files = $missing"
 
   # G0.2: git healthy
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 && gate "G0.2a inside git repo" || nogate "G0.2a not a git repo"
@@ -46,10 +53,10 @@ check_phase0() {
   grep -q '## 15. 文件更新規則' AGENTS.md && gate "G0.6 AGENTS has update-rules section" || nogate "G0.6 AGENTS missing update-rules"
 
   # G0.7: STATUS.md present + has current phase
-  [ -s STATUS.md ] && grep -q '當前階段' STATUS.md && gate "G0.7 STATUS.md present + has current phase" || nogate "G0.7 STATUS.md missing/broken"
+  [ -s STATUS.md ] && grep -q 'Current Focus' STATUS.md && gate "G0.7 STATUS.md present + has current focus" || nogate "G0.7 STATUS.md missing/broken"
 
-  # G0.8: ERRORS.md is a valid table template
-  [ -s ERRORS.md ] && grep -q '| 時間 | 錯誤 | 根因 |' ERRORS.md && gate "G0.8 ERRORS.md template present" || nogate "G0.8 ERRORS.md missing/broken"
+  # G0.8: ERRORS.md is a valid knowledge-base table
+  [ -s ERRORS.md ] && grep -q '| 時間 | 症狀 | 根因 | 解法 | 預防 |' ERRORS.md && gate "G0.8 ERRORS.md knowledge table present" || nogate "G0.8 ERRORS.md missing/broken"
 
   # G0.9: GATES.md has phase definitions
   [ -s GATES.md ] && grep -q 'Phase 1 — PWA MVP' GATES.md && gate "G0.9 GATES.md has Phase 1 definitions" || nogate "G0.9 GATES.md missing/broken"
@@ -70,7 +77,7 @@ check_phase1() {
   fi
 
   if [ -d backend ]; then
-    (cd backend && ruff check . 2>/dev/null && ruff format . --check 2>/dev/null) && gate "G1.3 ruff passes" || skip "G1.3 ruff (not runnable)"
+    (cd backend && source .venv/bin/activate && ruff check . && ruff format . --check) && gate "G1.3 ruff passes" || skip "G1.3 ruff (not runnable)"
     (cd backend && source .venv/bin/activate && PYTHONPATH=. pytest) && gate "G1.4b backend tests pass" || skip "G1.4b pytest (not runnable)"
   fi
 

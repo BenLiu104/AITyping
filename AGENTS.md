@@ -191,9 +191,9 @@ pytest                          # tests
 
 | 文件 | 幾時更新 | 更新什麼 | 誰負責 |
 |---|---|---|---|
-| **STATUS.md** | Phase 轉換時 / 下一步變更時 / 重要進度里程碑 | 當前階段、上次做咗咩、下一步要做、open issues | agent（每次狀態變更後） |
-| **ERRORS.md** | 遇到新 error 時 / 修復舊 error 時 | 新增一行（時間、錯誤、根因、解法、預防）；或補充已有 entry 的 resolution | agent（開發者） |
-| **CHANGELOG.md** | 每個 feature / fix / refactor merge 到 main 時 | 按 Keep a Changelog 格式追加一行 | agent（commit 前） |
+| **STATUS.md** | Phase 轉換時 / 下一步變更時 / 重要進度里程碑 / session 結束前 | **Resume dashboard**：Current Focus、Current Product Behavior、Area Status、Verification Snapshot、High-Signal Pitfalls、Next Steps；只保留當前要接手的資訊 | agent（每次狀態變更後） |
+| **ERRORS.md** | 遇到新 error 時 / 修復舊 error 時 / 發現可重複踩坑的根因時 | **錯誤知識庫**：症狀、根因、解法、預防。只記 debug knowledge，不放 roadmap / 當前下一步 / changelog 摘要 | agent（開發者） |
+| **CHANGELOG.md** | 每個 feature / fix / refactor 完成並準備 commit/merge 前；或發現之前漏記的重要變更時 | **產品/架構變更紀錄**：按 Keep a Changelog 追加 Added / Changed / Fixed / Security 等；只寫 user-visible 或 architecture-level 變更，不寫 debug 流水帳 | agent（commit 前） |
 | **PRD.md** | API 合約變更時 / scope 增減時 / NFR 變更時 | §6 API 合約、§3 FR、§4 NFR、§14 Open Questions | agent + user confirm |
 | **GATES.md** | 閘門通過 / 失敗時 / 新 Phase 閘門定義時 | 狀態欄更新；或新增閘門條目 | agent（開發者） |
 | **check.sh** | 新增 / 修改閘門邏輯時 | 相應的 shell check 函數 | agent（開發者） |
@@ -205,10 +205,15 @@ pytest                          # tests
 
 **核心原則：**
 1. **改 code 唔改文件 = 唔算完成。** Definition of Done 包括更新相關文件。
-2. **STATUS.md 係最易漏嘅。** 每次 session 結束前順手更新 STATUS.md 嘅「上次做的事」同「下一步要做」。
-3. **ERRORS.md 係最低成本嘅高回報文件。** 踩坑當下記低 3 行，下次 agent resume 自動避開。
-4. **user confirm required 嘅文件**（PRD、ADR、AGENTS golden rules）agent 唔可以自己靜雞雞改，要先話畀 user 聽。
-5. **文件過時 = 引導 agent 做錯決定。** 如果發現呢份文件更新規則本身 outdated，第一時間 update 佢。
+2. **三份文件唔好互相複製：**
+   - `STATUS.md` = resume dashboard，只講現在狀態、當前行為、驗證 snapshot、下一步。
+   - `ERRORS.md` = 錯誤知識庫，只講症狀 / 根因 / 解法 / 預防。
+   - `CHANGELOG.md` = 對外/專案層面的產品與架構變更，只講 feature / fix / change / security。
+3. **STATUS.md 係最易漏嘅。** 每次 session 結束前更新 Current Focus、Verification Snapshot、Next Steps；不要把整份 `ERRORS.md` 或完整 changelog 摘入去。
+4. **ERRORS.md 係最低成本嘅高回報文件。** 踩坑當下記低症狀、根因、解法、預防；若只係產品功能變更，放 `CHANGELOG.md`，唔好放 `ERRORS.md`。
+5. **CHANGELOG.md 係 commit/merge 前必查。** 每個 feature / fix / refactor 完成後，補 Added / Changed / Fixed / Security；不要寫 `setup=0 sent=0` 呢類 debug counter，細節放 `ERRORS.md`。
+6. **user confirm required 嘅文件**（PRD、ADR、AGENTS golden rules）agent 唔可以自己靜雞雞改，要先話畀 user 聽；本節文件規則如 user 要求整理，可直接更新並驗證。
+7. **文件過時 = 引導 agent 做錯決定。** 如果發現呢份文件更新規則本身 outdated，第一時間 update 佢。
 
 ## 16. 不確定就查哪裡
 

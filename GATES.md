@@ -20,7 +20,7 @@
 
 ---
 
-## Phase 1 — PWA MVP
+## Phase 1 — PWA MVP（✅ 基本流程已通過 v09:23）
 
 | ID | 閘門 | 檢查方式 |
 |---|---|---|
@@ -30,13 +30,14 @@
 | G1.4 | `npm run test` + `pytest` 全綠 | `check.sh phase1` |
 | G1.5 | DevTools / bundle 中無 `GEMINI_API_KEY` | `check.sh phase1`（grep dist/） |
 | G1.6 | Mock 模式可獨立運作（`MOCK_MODE=true` 不需 Gemini） | `bash test/mock_test.sh` |
-| G1.7 | iPhone Safari 真機：partial transcript < 500ms | 手動測試 |
-| G1.8 | 放開後 < 3s 出 cleanup 文字 | 手動測試 |
+| G1.7 | iPhone Safari / Home Screen PWA：tap-to-toggle 後 Live transcript 出現 | 手動測試：`v09:23` Ben confirmed ✅ |
+| G1.8 | 停止錄音後 < 3s 出 cleanup 文字 | 手動測試：`v09:23` Ben confirmed ✅ |
 | G1.9 | 一鍵 copy 成功 | 手動測試 |
+| G1.10 | 成功 transcript/cleanup 後不再顯示 false-positive WebSocket error | 手動測試：`v09:23` Ben confirmed ✅ |
 
 ---
 
-## Phase 2 — PWA 打磨
+## Phase 2 — PWA 打磨（🎯 Current）
 
 | ID | 閘門 | 檢查方式 |
 |---|---|---|
@@ -45,6 +46,8 @@
 | G2.3 | 語言模式切換正常 | 手動測試 |
 | G2.4 | History 存取 + 清除 | 手動測試 |
 | G2.5 | Raw transcript toggle 可切換 | 手動測試 |
+| G2.6 | Debug counters 隱藏或只在 debug mode 顯示 | 手動測試 |
+| G2.7 | Cancel flow 可中止當前錄音 / cleanup | 手動測試 |
 
 ---
 

@@ -6,18 +6,20 @@ from app.gemini.adapter import GeminiAdapter
 async def test_gemini_adapter_mock_mode():
     # 測試 Mock 模式下的行為
     adapter = GeminiAdapter(mock_mode=True)
-    
+
     assert adapter.get_live_model_name() == "models/gemini-3.1-flash-live-preview"
     assert adapter.get_cleanup_model_name() == "gemini-3.1-flash-lite"
-    
+
     # 測試 Mock Token
     token_res = await adapter.generate_ephemeral_token()
     assert token_res["token"] == "mock_ephemeral_token_xyz123"
     assert "expiresAt" in token_res
     assert token_res["model"] == "models/gemini-3.1-flash-live-preview"
-    
+
     # 測試 Mock Cleanup
-    cleanup_res = await adapter.cleanup_transcript("hello world", mode="message", language="en")
+    cleanup_res = await adapter.cleanup_transcript(
+        "hello world", mode="message", language="en"
+    )
     assert "Mock Cleaned (message-en)" in cleanup_res
     assert "HELLO WORLD" in cleanup_res
 

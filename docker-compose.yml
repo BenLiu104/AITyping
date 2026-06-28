@@ -25,17 +25,3 @@ services:
       - "8080:80" # VPS 內部映射，由 Cloudflare Tunnel 代理或內部直接訪問
     depends_on:
       - backend
-
-  # 🚀 一站式 Cloudflare Tunnel (cloudflared) 容器化託管
-  # 這樣你就不需要手動在 VPS 主機安裝 cloudflared daemon，直接用容器拉起最省心！
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: aityping-cf-tunnel
-    restart: always
-    environment:
-      # 需要你將 Cloudflare Tunnel Token 放入本機根目錄的 .env 檔案中
-      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
-    command: tunnel --no-autoupdate run
-    depends_on:
-      - frontend
-      - backend
