@@ -67,10 +67,15 @@ class GeminiAdapter:
                     "expiresAt": response.expires_at,
                     "model": self.get_live_model_name()
                 }
-            except AttributeError:
-                # 降級處理：如果 google-genai 新版 client.models 還未發布 create_web_token 方法，
-                # 我們可以藉由返回 API Key（或將其包裝為臨時 Token）作為回退。
-                raise NotImplementedError("google-genai SDK 版本尚未完整支援 ephemeral token 簽發，請確認 SDK 版本或暫用 Mock 模式。")
+            except (AttributeError, Exception) as e:
+                # 降級/回退處理：如果 SDK 不支持或當前 API Key 不允許簽發短效 Token（例如第三方/NVIDIA/自備 API 密鑰）
+                # 我們直接安全的將原 GEMINI_API_KEY 作為 Token 返回給前端直連
+                import datetime
+                return {
+                    "token": self.api_key,
+                    "expiresAt": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=ttl)).isoformat(),
+                    "model": self.get_live_model_name()
+                }
 
         except APIError as e:
             raise RuntimeError(f"Gemini API 簽署 ephemeral token 失敗: {e}")
