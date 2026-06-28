@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aityping-backend
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app  # 開發時掛載以支援熱重載
+    environment:
+      - WATCHFILES_FORCE_POLLING=true # 適用於 Docker 掛載的即時重載

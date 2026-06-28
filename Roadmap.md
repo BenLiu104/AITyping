@@ -6,7 +6,7 @@
 
 ---
 
-## Phase 0 — 專案前期準備（當前）
+## Phase 0 — 專案前期準備（全部 ✅）
 
 **目標：** 在寫任何 code 之前，把規格、規則、結構定清楚，讓 AI agent 開發穩定可控。
 
@@ -15,8 +15,8 @@
 - [x] git init + `.gitignore`
 - [x] `.env.example` / `.editorconfig` / `CHANGELOG.md`
 - [x] `docs/adr/` 架構決策紀錄
-- [ ] 最終確認技術棧（Vite+React+TS / FastAPI）
-- [ ] 域名 + HTTPS 方案二選一（Caddy / Cloudflare Tunnel）
+- [x] 最終確認技術棧（Vite+React+TS / FastAPI）
+- [x] 域名 + HTTPS 方案二選一（Caddy / Cloudflare Tunnel -> Cloudflare Tunnel）
 
 **Exit criteria：** AI agent 只看 `AGENTS.md` + `PRD.md` 就知道要 build 什麼、怎麼 build、放哪裡。
 
@@ -27,21 +27,20 @@
 **目標：** iPhone Safari 打開 → 按住說話 → 即時 transcript → 放開 cleanup → textarea → 一鍵 copy。一條 happy path 跑通。
 
 ### 前端
-- [ ] Vite + React + TS + `vite-plugin-pwa` 腳手架
-- [ ] UI：大 mic button、transcript preview、result textarea、copy / clear
-- [ ] `getUserMedia` + AudioContext + AudioWorklet PCM pipeline
-- [ ] Float32 → 16kHz Int16 PCM resample（含 unit test）
-- [ ] WebSocket 接 Gemini Live API（用後端發 token）
-- [ ] 解析 `inputAudioTranscription`，即時更新草稿
-- [ ] 放開 → 呼叫 `/api/cleanup` → 貼結果
+- [x] Vite + React + TS + `vite-plugin-pwa` 腳手架 (B1)
+- [x] UI：大 mic button、transcript preview、result textarea、copy / clear (B2)
+- [x] `getUserMedia` + AudioContext + AudioWorklet PCM pipeline (B3)
+- [x] Float32 → 16kHz Int16 PCM resample（含 unit test） (B3)
+- [x] WebSocket 接 Gemini Live API（用後端發 token） (B4)
+- [x] 解析 `inputAudioTranscription`，即時更新草稿 (B4)
+- [x] 放開 → 呼叫 `/api/cleanup` → 貼結果 (B5/B6)
 
 ### 後端
-- [ ] FastAPI app skeleton + health route
-- [ ] `POST /api/live-token`（簽發 Gemini ephemeral token）
-- [ ] `POST /api/cleanup`（呼叫 gemini-3.1-flash-lite）
-- [ ] Gemini adapter 層（隔離 model / API 變動）
-- [ ] CORS、基本 error handling
-- [ ] **Mock 模式**（不燒 API 也能開發前端）
+- [x] FastAPI app skeleton + health route + CORS + config（讀 `.env`）。
+- [x] `gemini/` adapter：包 `google-genai`，集中 model 名。
+- [x] `POST /api/cleanup`（flash-lite）+ pydantic schema + test。
+- [x] `POST /api/live-token`（簽 ephemeral token）+ test。
+- [x] Dockerfile + 加入 docker-compose。
 
 ### 部署
 - [ ] Dockerfile（前後端）+ docker-compose
@@ -52,14 +51,14 @@
 
 ---
 
-## Phase 2 — PWA 打磨（變得好用）
+## Phase 2 — PWA 打磨（變得好用）（✅ 部分提前於 Phase 1 MVP 實作）
 
-- [ ] PWA manifest + Add to Home Screen + icon + splash
-- [ ] Cleanup 模式：訊息 / Email / TODO / Prompt
-- [ ] 語言模式：繁中 / 英文 / 中英混合 / 粵語口語 → 書面
+- [x] Cleanup 模式：訊息 / Email / TODO / Prompt（B2/B6 提前實作）
+- [x] 語言模式：繁中 / 英文 / 中英混合 / 粵語口語 → 書面（B2/B6 提前實作）
 - [ ] 即時 partial vs committed transcript 分離（避免跳動）
 - [ ] History（本地）、prompt presets / favorites
-- [ ] Auto-copy after cleanup、震動回饋、cancel gesture（上滑取消）
+- [x] Auto-copy after cleanup、震動回饋（B2/B6 提前實作）
+- [ ] Cancel gesture（上滑取消）
 - [ ] Raw transcript toggle / undo（讓用戶信任 cleanup）
 
 **Exit criteria：** 每天都願意打開來用，cleanup 準到不用再手動改。
@@ -83,7 +82,7 @@
 
 > ⚠️ 高風險、高摩擦。需要 Mac + Xcode + Apple Developer ($99/年)。Apple 對 keyboard extension 的 mic / Full Access 限制很嚴。確認 PWA 真的每天用，才投資。
 
-- [ ] 評估 keyboard extension mic 限制的最新狀態
+- [ ] 評估 keyboard extension mic 限制 of 狀態
 - [ ] 復用 PWA 的後端引擎（token + cleanup）
 - [ ] Keyboard extension → backend → Gemini
 - [ ] `textDocumentProxy.insertText` 插字到任何 app

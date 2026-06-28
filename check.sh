@@ -71,7 +71,7 @@ check_phase1() {
 
   if [ -d backend ]; then
     (cd backend && ruff check . 2>/dev/null && ruff format . --check 2>/dev/null) && gate "G1.3 ruff passes" || skip "G1.3 ruff (not runnable)"
-    (cd backend && pytest 2>/dev/null) && gate "G1.4b backend tests pass" || skip "G1.4b pytest (not runnable)"
+    (cd backend && source .venv/bin/activate && PYTHONPATH=. pytest) && gate "G1.4b backend tests pass" || skip "G1.4b pytest (not runnable)"
   fi
 
   if [ -d frontend/dist ]; then

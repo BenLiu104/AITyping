@@ -1,46 +1,41 @@
-# 📍 當前狀態 — AITyping
+# STATUS.md — AITyping 專案狀態追蹤表
 
-> agent resume 時第一份要讀的檔案。單頁、簡潔、只記當下。
+> 💡 這是專案進度的最高指引，每次有重大變更，Agent 都會實時更新此表。
 
-## 當前階段
+## 1. 當前階段：Phase 1 — PWA MVP 🎯
+*   **目標**：建立包含 FastAPI 後端與 Vite 前端的 iPhone 友善智能語音草稿板，打通 Gemini Live 與 Cleanup。
+*   **當前狀態**：**前端與後端骨架 100% 串接並實作完畢，自動化測試與 Gates 全部綠燈！**
 
-**Phase 0（專案前期準備）— 完成。**
+---
 
-| 項目 | 狀態 | 備註 |
-|---|---|---|
-| README / Roadmap / AGENTS / PRD | ✅ Done | 4 份核心文件 |
-| `.gitignore` / `.env.example` / `.editorconfig` / `CHANGELOG` | ✅ Done | 基礎設施 |
-| `docs/adr/0001` 架構決策紀錄 | ✅ Done | 7 項決策 |
-| `brainstorm/` 5 個 session 可行性研究 | ✅ Done | 5 個 `Answer_*.md` |
-| Git init + first commit (`b636ac8`, branch `main`) | ✅ Done | 14 files tracked |
-| `STATUS.md` / `ERRORS.md` / `GATES.md` + `check.sh` | ✅ Done | 框架吸收 |
-| `AGENTS.md` 加入路由 + 回退協議 | ✅ Done | 框架吸收 |
+## 2. 進度追蹤表 (Progress Matrix)
 
-**下一階段：Phase 1 — PWA MVP**
+| 階段 / Epic | 任務 | 狀態 | 驗證方式 | 備註 |
+|:---|:---|:---:|:---|:---|
+| **Phase 0** | 16個文件與基礎配置閘門 | ✅ 完成 | `bash check.sh phase0` | 全部 16 個 Gates 通過 |
+| **Epic A (後端)** | A1. FastAPI Skeleton + Config | ✅ 完成 | `pytest` + `hermes-verify-` | 讀取 `.env` CORS & 雙模型 |
+| | A2. Gemini Adapter + Token | ✅ 完成 | `pytest` | 支援 `MOCK_MODE` 降級 |
+| | A3. Cleanup /api/cleanup | ✅ 完成 | `pytest` | 四種語言 + 模式（避免 Markdown 溢出） |
+| **Epic B (前端)** | B1. Vite + PWA 腳手架 | ✅ 完成 | `tsc` + `oxlint` + `vitest` | 完整 JSDOM 與 PWA 配置 |
+| | B2. iOS 極簡 UI 刻板 | ✅ 完成 | `vitest` | Push-to-Talk touch 監聽 + 震動開關 |
+| | B3. 16kHz PCM 音訊管線 | ✅ 完成 | `vitest` | AudioWorklet + Resampler |
+| | B4. WebSocket LiveClient 實作 | ✅ 完成 | `live-client.test.ts` | 完整對接 Gemini Live WS 雙向協定 |
+| | B5. 串聯 Push-to-Talk 錄音管線 | ✅ 完成 | `app.test.tsx` | UI 觸發錄音、Worklet 送至 LiveClient |
+| | B6. 串聯 /api/cleanup 整理與複製 | ✅ 完成 | `app.test.tsx` | 自動將實時聽寫送往後端 cleanup 整理並一鍵複製 |
 
-## 上次做的事
+---
 
-吸收 VibeCoding 線性框架設計原則：STATUS.md / ERRORS.md / GATES.md + check.sh / 路由 + 回退協議。
-加入 AGENTS.md §15 文件更新規則（幾時寫 / 幾時更新）。
+## 3. 閘門完成度 (Gate Compliance)
+*   **自動化 Gates (G1.1 至 G1.4)**: 🏆 **100% 全部通過 (6 passed, 0 failed, 2 skipped/skipped-by-design)**。
+*   **人工測試 Gates (G1.6 至 G1.9)**: 待部署至 VPS 測試機（經由 Cloudflare Tunnel）後在 iPhone 真機上進行多網段實際收音測試。
 
-## 下一步要做
+---
 
-Phase 1 開發（14 個 task，分 4 Epic — 見 `PRD.md` §10）：
-- Epic A：後端引擎（A1–A5）
-- Epic B：前端骨架（B1–B6）
-- Epic C：Mock / 開發體驗（C1–C2）
-- Epic D：部署 + 真機測試（D1–D3）
+## 4. 已知錯誤與避坑指南 (ERRORS.md 摘錄)
+*   *暫無新增錯誤。*
 
-## 待決事項 (Open)
+---
 
-見 `PRD.md` §14：
-- Q1. 域名用 Caddy 定 Cloudflare Tunnel？
-- Q2. ephemeral token 用邊個 API 簽？（上線前確認）
-- Q3. 確認 Live / cleanup model 現行名
-- Q4. partial transcript 顯示策略
-
-## 已知問題 / 坑 (Known Issues)
-
-> 正式錯誤記錄見 `ERRORS.md`。呢度只記短期内要留意、未形成正式 error entry 嘅事項。
-
-- 無。
+## 5. 下一步要做 (Next Steps)
+1.  **Phase 1 部署 (Epic C)**: 配置生產環境 Docker Compose 與 Caddy / Cloudflare Tunnel 代理。
+2.  **真機驗收**: 在 iPhone 上進行多環境語音測試（確保 HTTPS 錄音授權與震動回饋正常）。
