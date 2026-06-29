@@ -15,6 +15,7 @@
 - Gemini Live WebSocket client with Live input transcription support。
 - `/api/debug-event` telemetry endpoint for counters/status-only diagnostics。
 - Docker production deployment for backend/frontend on ARM64 VPS。
+- Phase 2 transcript accuracy polish：Live setup 支援 Cantonese / Cantonese-English speech profile hints，cleanup prompt 加 Cantonese ASR repair 指令。
 
 ### Changed
 - `PRD.md` updated to v0.2：Phase 1 MVP 基本流程已跑通，產品進入 Phase 2 polish。
@@ -26,6 +27,7 @@
 - Gemini Live readiness 改為等待 `setupComplete`，並加入 pre-setup audio buffering。
 - Cloudflare Tunnel 部署改為 host systemd `cloudflared.service` only；Docker Compose 不再管理 tunnel connector。
 - `AGENTS.md` 文件更新規則明確化：`STATUS.md` / `ERRORS.md` / `CHANGELOG.md` 分工、更新時機與避免重複原則。
+- `mixed` 語言模式現在優先視為 Cantonese-English code-switching；`yue` UI 值保留作內部相容，但 user-facing / prompt wording 改用 `Cantonese`。
 
 ### Fixed
 - 修復 Tailwind 未接入導致 production UI 退化的問題。
@@ -47,3 +49,4 @@
 ### Verification
 - 新增/更新 frontend regression tests for mic priming、tap-to-toggle、LiveClient、cleanup gating、PWA late error handling。
 - 維持 `typecheck` / `lint` / `test` / `build` / backend tests / `check.sh phase1` 作為交付驗證。
+- 新增 regression tests 覆蓋 Cantonese-English Live setup hints、App language → speech profile plumbing、cleanup Cantonese ASR repair prompt。

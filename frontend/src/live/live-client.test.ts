@@ -70,6 +70,29 @@ describe('LiveClient WebSockets Integration Tests', () => {
     expect(sentData.setup.inputAudioTranscription).toEqual({});
   });
 
+  it('should include Cantonese-English transcription hints in setup when requested', () => {
+    const client = new LiveClient({
+      token: 'test_token',
+      model: 'models/gemini-3.1-flash-live-preview',
+      speechProfile: 'cantonese-english',
+      onTranscription: mockOnTranscription,
+      onError: mockOnError,
+      onClose: mockOnClose,
+    });
+
+    client.connect();
+    const ws = wsInstances[0];
+    ws.readyState = 1;
+    ws.onopen?.();
+
+    const sentData = JSON.parse(lastMockSend.mock.calls[0][0]);
+    const instruction = sentData.setup.systemInstruction.parts[0].text;
+    expect(instruction).toContain('Cantonese-English');
+    expect(instruction).toContain('Hong Kong Cantonese');
+    expect(instruction).toContain('Preserve English');
+    expect(instruction).not.toContain('Yue');
+  });
+
   it('should notify when Live setup is complete', () => {
     const mockOnSetupComplete = vi.fn();
     const client = new LiveClient({

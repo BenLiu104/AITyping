@@ -2,9 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Copy, Check, Sliders, ChevronDown, Sparkles, Trash2 } from 'lucide-react';
 import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
-import { LiveClient } from './live/live-client';
+import { LiveClient, type SpeechProfile } from './live/live-client';
 
 const BUILD_LABEL = 'v09:23';
+
+const getSpeechProfile = (language: Language): SpeechProfile => {
+  if (language === 'mixed') return 'cantonese-english';
+  if (language === 'yue') return 'cantonese';
+  if (language === 'en') return 'english';
+  return 'auto';
+};
 
 type LiveDebugSnapshot = {
   wsOpen: boolean;
@@ -310,6 +317,7 @@ export default function App() {
       const client = new LiveClient({
         token: tokenData.token,
         model: tokenData.model,
+        speechProfile: getSpeechProfile(language),
         onOpen: () => {
           updateDebugSnapshot({ wsOpen: true });
           setLiveStatus('Live API 已連線，正在準備聽寫...');

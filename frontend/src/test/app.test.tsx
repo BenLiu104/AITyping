@@ -201,6 +201,29 @@ describe('App Component Core UI Tests', () => {
     expect(screen.queryByText(/正在聽寫\.\.\./i)).not.toBeInTheDocument()
   })
 
+  it('passes Cantonese-English speech profile to LiveClient for the default mixed language mode', async () => {
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
+    }))
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(liveClientMockState.latestConfig.speechProfile).toBe('cantonese-english')
+  })
+
   it('cleans up Live input transcription after push-to-talk release', async () => {
     vi.useFakeTimers()
     window.localStorage.setItem('aityping:mic-permission-primed', 'true')

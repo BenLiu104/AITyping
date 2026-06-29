@@ -4,9 +4,31 @@
  * 負責處理與 Google Gemini Live WebSocket 雙向串流連線 (PRD §8)
  */
 
+export type SpeechProfile = 'auto' | 'cantonese' | 'cantonese-english' | 'english';
+
+const BASE_TRANSCRIPTION_INSTRUCTION =
+  "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.";
+
+function buildTranscriptionInstruction(profile: SpeechProfile = 'auto'): string {
+  if (profile === 'cantonese-english') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user often speaks Cantonese-English code-switching from a Hong Kong Cantonese speaker. Transcribe Hong Kong Cantonese in Traditional Chinese with Hong Kong wording. Preserve English words, product names, app names, and technical terms in English. Do not translate English into Chinese. Do not convert Cantonese into Mandarin-style phrasing.`;
+  }
+
+  if (profile === 'cantonese') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks Hong Kong Cantonese. Transcribe Cantonese in Traditional Chinese with Hong Kong wording. Do not convert Cantonese into Mandarin-style phrasing.`;
+  }
+
+  if (profile === 'english') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks English. Preserve English spelling, product names, app names, and technical terms exactly when possible.`;
+  }
+
+  return BASE_TRANSCRIPTION_INSTRUCTION;
+}
+
 export interface LiveClientConfig {
   token: string;
   model: string;
+  speechProfile?: SpeechProfile;
   onTranscription: (text: string, isFinal: boolean) => void;
   onError: (error: string) => void;
   onClose: (code?: number, reason?: string) => void;
@@ -173,7 +195,7 @@ export class LiveClient {
         systemInstruction: {
           parts: [
             {
-              text: "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.",
+              text: buildTranscriptionInstruction(this.config.speechProfile),
             },
           ],
         },

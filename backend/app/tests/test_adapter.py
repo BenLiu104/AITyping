@@ -24,6 +24,41 @@ async def test_gemini_adapter_mock_mode():
     assert "HELLO WORLD" in cleanup_res
 
 
+@pytest.mark.asyncio
+async def test_cleanup_prompt_repairs_cantonese_english_asr_without_yue_label():
+    captured = {}
+
+    class FakeModels:
+        def generate_content(self, *, model, contents, config):
+            captured["model"] = model
+            captured["contents"] = contents
+            captured["config"] = config
+
+            class Response:
+                text = "整理後文字"
+
+            return Response()
+
+    class FakeClient:
+        models = FakeModels()
+
+    adapter = GeminiAdapter(mock_mode=True)
+    adapter.mock_mode = False
+    adapter.client = FakeClient()
+
+    result = await adapter.cleanup_transcript(
+        "check 下 Docker compose 個 backend service 係咪 running",
+        mode="message",
+        language="mixed",
+    )
+
+    assert result == "整理後文字"
+    assert "Cantonese-English" in captured["contents"]
+    assert "Cantonese ASR" in captured["contents"]
+    assert "Preserve English" in captured["contents"]
+    assert "Yue" not in captured["contents"]
+
+
 def test_gemini_adapter_no_api_key_validation():
     # 測試無 API key 時，在非 Mock 模式下拋出 ValueError
     with pytest.raises(ValueError) as excinfo:
