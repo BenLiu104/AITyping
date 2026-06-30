@@ -364,7 +364,7 @@ export default function App() {
       client.connect();
 
       // 5. Connect Worklet Processor
-      await audioContext.audioWorklet.addModule('/pcm-processor.js');
+      await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}pcm-processor.js`);
       const source = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
       audioWorkletNodeRef.current = workletNode;
