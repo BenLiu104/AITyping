@@ -5,7 +5,7 @@ import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
 import { SenseVoiceWsClient } from './live/sensevoice-ws-client';
 
-const BUILD_LABEL = 'v12:18';
+const BUILD_LABEL = 'v12:19';
 
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -323,6 +323,9 @@ export default function App() {
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });
             setLiveStatus('SenseVoice 已就緒，請開始說話...');
+          },
+          onAudioSent: () => {
+            updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
           },
           onTranscription: (text, isFinal) => {
             updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });

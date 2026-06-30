@@ -16,6 +16,7 @@ export interface SenseVoiceWsClientConfig {
   onError: (error: string) => void;
   onClose: (code?: number, reason?: string) => void;
   onOpen?: () => void;
+  onAudioSent?: () => void;  // called each time a PCM chunk is sent
 }
 
 export class SenseVoiceWsClient {
@@ -98,6 +99,7 @@ export class SenseVoiceWsClient {
   sendAudioChunk(pcmBuffer: ArrayBuffer) {
     if (!this.isConnected || this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws!.send(pcmBuffer);
+    this.config.onAudioSent?.();
   }
 
   /** 通知音訊結束，後端 flush 剩餘 buffer */
