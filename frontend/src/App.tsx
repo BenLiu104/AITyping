@@ -3,9 +3,9 @@ import { Mic, Copy, Check, Sliders, ChevronDown, Sparkles, Trash2 } from 'lucide
 import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
-import { SenseVoiceClient } from './live/sensevoice-client';
+import { SenseVoiceWsClient } from './live/sensevoice-ws-client';
 
-const BUILD_LABEL = 'v12:17';
+const BUILD_LABEL = 'v12:18';
 
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -65,7 +65,7 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const liveClientRef = useRef<LiveClient | SenseVoiceClient | null>(null);
+  const liveClientRef = useRef<LiveClient | SenseVoiceWsClient | null>(null);
   const transcriptRef = useRef<string>('');
   const isPrimingMicPermissionRef = useRef<boolean>(false);
   const isMicPrimedForSessionRef = useRef<boolean>(false);
@@ -303,7 +303,7 @@ export default function App() {
       // worklet pipeline that follows the if/else.
       const useSenseVoice = language === 'yue' || language === 'mixed';
       let audioContext: AudioContext;
-      let client: LiveClient | SenseVoiceClient;
+      let client: LiveClient | SenseVoiceWsClient;
       let inputSampleRate: number;
 
       if (useSenseVoice) {
@@ -317,8 +317,8 @@ export default function App() {
         }
         inputSampleRate = audioContext.sampleRate;
 
-        client = new SenseVoiceClient({
-          apiUrl: 'https://sencevoice.bochibb.qzz.io',
+        client = new SenseVoiceWsClient({
+          wsUrl: 'wss://sencevoice.bochibb.qzz.io/ws/transcribe',
           language: 'yue',
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });
@@ -455,7 +455,7 @@ export default function App() {
 
     if (useSenseVoice) {
       // ── SenseVoice stop: flush remaining buffer + wait for all in-flight ──
-      const svClient = liveClientRef.current as SenseVoiceClient | null;
+      const svClient = liveClientRef.current as SenseVoiceWsClient | null;
       svClient?.sendAudioStreamEnd();
       cleanupAudioPipeline(false);
       setLiveStatus('正在等待最後聽寫...');
