@@ -7,6 +7,11 @@ const liveClientMockState = vi.hoisted(() => ({
   latestClient: undefined as any,
 }))
 
+const senseVoiceClientMockState = vi.hoisted(() => ({
+  latestConfig: undefined as any,
+  latestClient: undefined as any,
+}))
+
 vi.mock('../live/live-client', () => ({
   LiveClient: class {
     constructor(config: any) {
@@ -20,6 +25,22 @@ vi.mock('../live/live-client', () => ({
         emitError: vi.fn((message: string) => config.onError?.(message)),
       }
       return liveClientMockState.latestClient
+    }
+  },
+}))
+
+vi.mock('../live/sensevoice-client', () => ({
+  SenseVoiceClient: class {
+    constructor(config: any) {
+      senseVoiceClientMockState.latestConfig = config
+      senseVoiceClientMockState.latestClient = {
+        connect: vi.fn(() => config.onOpen?.()),
+        sendAudioChunk: vi.fn(),
+        sendAudioStreamEnd: vi.fn(),
+        disconnect: vi.fn(),
+        waitForCompletion: vi.fn().mockResolvedValue(''),
+      }
+      return senseVoiceClientMockState.latestClient
     }
   },
 }))
@@ -86,6 +107,8 @@ afterEach(() => {
   window.localStorage.clear()
   liveClientMockState.latestConfig = undefined
   liveClientMockState.latestClient = undefined
+  senseVoiceClientMockState.latestConfig = undefined
+  senseVoiceClientMockState.latestClient = undefined
 })
 
 describe('App Component Core UI Tests', () => {
@@ -201,7 +224,7 @@ describe('App Component Core UI Tests', () => {
     expect(screen.queryByText(/正在聽寫\.\.\./i)).not.toBeInTheDocument()
   })
 
-  it('passes Cantonese-English speech profile to LiveClient for the default mixed language mode', async () => {
+  it('uses SenseVoice for Cantonese/mixed and LiveClient for English', async () => {
     mockBrowserAudioPipeline()
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -216,12 +239,44 @@ describe('App Component Core UI Tests', () => {
       fireEvent.pointerDown(micButton)
       await flushPromises()
     })
+
+    // Default is 'mixed' → SenseVoiceClient
     await act(async () => {
       fireEvent.pointerDown(micButton)
       await flushPromises()
     })
 
-    expect(liveClientMockState.latestConfig.speechProfile).toBe('cantonese-english')
+    expect(senseVoiceClientMockState.latestConfig).toBeTruthy()
+    expect(senseVoiceClientMockState.latestConfig.language).toBe('yue')
+    expect(senseVoiceClientMockState.latestClient).toBeTruthy()
+  })
+
+  it('passes English speech profile to LiveClient when language is English', async () => {
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
+    }))
+
+    render(<App />)
+
+    // Switch language to English first
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(liveClientMockState.latestConfig.speechProfile).toBe('english')
   })
 
   it('cleans up Live input transcription after push-to-talk release', async () => {
@@ -245,6 +300,11 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -301,6 +361,11 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -364,6 +429,11 @@ describe('App Component Core UI Tests', () => {
 
     render(<App />)
 
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
       fireEvent.pointerDown(micButton)
@@ -418,6 +488,11 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {

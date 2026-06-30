@@ -3,6 +3,7 @@ import { Mic, Copy, Check, Sliders, ChevronDown, Sparkles, Trash2 } from 'lucide
 import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
+import { SenseVoiceClient } from './live/sensevoice-client';
 
 const BUILD_LABEL = 'v09:23';
 
@@ -64,7 +65,7 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const liveClientRef = useRef<LiveClient | null>(null);
+  const liveClientRef = useRef<LiveClient | SenseVoiceClient | null>(null);
   const transcriptRef = useRef<string>('');
   const isPrimingMicPermissionRef = useRef<boolean>(false);
   const isMicPrimedForSessionRef = useRef<boolean>(false);
@@ -298,72 +299,125 @@ export default function App() {
       mediaStreamRef.current = stream;
       isCaptureActiveRef.current = true;
 
-      // 2. Get Ephemeral Token from backend (A4)
-      setLiveStatus('正在連線 Live API...');
-      const tokenRes = await fetch(`${API_BASE}/api/live-token`, { method: 'POST' });
-      if (!tokenRes.ok) {
-        throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
-      }
-      const tokenData = await tokenRes.json();
+      // Shared variables set inside the branch below, used by the common
+      // worklet pipeline that follows the if/else.
+      const useSenseVoice = language === 'yue' || language === 'mixed';
+      let audioContext: AudioContext;
+      let client: LiveClient | SenseVoiceClient;
+      let inputSampleRate: number;
 
-      // 3. Initialize AudioContext (iOS Safari requires User Gesture which is satisfied here)
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioContextRef.current = audioContext;
+      if (useSenseVoice) {
+        // ── SenseVoice mode (Cantonese / mixed) — no ephemeral token needed ──
+        setLiveStatus('正在連線 SenseVoice...');
 
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-      }
-
-      const inputSampleRate = audioContext.sampleRate;
-
-      // 4. Initialize Live WebSocket Client
-      const client = new LiveClient({
-        token: tokenData.token,
-        model: tokenData.model,
-        speechProfile: getSpeechProfile(language),
-        onOpen: () => {
-          updateDebugSnapshot({ wsOpen: true });
-          setLiveStatus('Live API 已連線，正在準備聽寫...');
-        },
-        onSetupComplete: () => {
-          updateDebugSnapshot({ setupComplete: true });
-          setLiveStatus('連線成功，請開始說話...');
-        },
-        onAudioSent: () => {
-          updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
-        },
-        onTranscription: (text, isFinal) => {
-          updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
-          setLiveStatus('');
-          if (isFinal) {
-            transcriptRef.current += text;
-            setFinalTranscript(transcriptRef.current);
-            setInterimTranscript('');
-          } else {
-            setInterimTranscript(text);
-          }
-        },
-        onError: (err) => {
-          updateDebugSnapshot({ lastError: err });
-          void postDebugEvent('error');
-          if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
-            return;
-          }
-          setErrorMsg(err);
-          cleanupAudioPipeline();
-          setIsRecording(false);
-        },
-        onClose: (code, reason) => {
-          updateDebugSnapshot({ lastCloseCode: code, lastCloseReason: reason || '' });
-          void postDebugEvent('close');
-          console.log('WS Connection closed.');
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioContext;
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
         }
-      });
+        inputSampleRate = audioContext.sampleRate;
 
-      liveClientRef.current = client;
-      client.connect();
+        client = new SenseVoiceClient({
+          apiUrl: 'https://sencevoice.bochibb.qzz.io',
+          language: 'yue',
+          onOpen: () => {
+            updateDebugSnapshot({ wsOpen: true });
+            setLiveStatus('SenseVoice 已就緒，請開始說話...');
+          },
+          onTranscription: (text, isFinal) => {
+            updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
+            setLiveStatus('');
+            if (isFinal) {
+              transcriptRef.current += text;
+              setFinalTranscript(transcriptRef.current);
+              setInterimTranscript('');
+            } else {
+              setInterimTranscript(text);
+            }
+          },
+          onError: (err) => {
+            updateDebugSnapshot({ lastError: err });
+            if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
+              return;
+            }
+            setErrorMsg(err);
+            cleanupAudioPipeline();
+            setIsRecording(false);
+          },
+          onClose: (_code, _reason) => {
+            updateDebugSnapshot({ lastCloseCode: _code, lastCloseReason: _reason || '' });
+            console.log('SenseVoice closed.');
+          }
+        });
 
-      // 5. Connect Worklet Processor
+        liveClientRef.current = client;
+        client.connect();
+      } else {
+        // ── Gemini Live API mode (English / Mandarin) ──
+        setLiveStatus('正在連線 Live API...');
+        const tokenRes = await fetch(`${API_BASE}/api/live-token`, { method: 'POST' });
+        if (!tokenRes.ok) {
+          throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
+        }
+        const tokenData = await tokenRes.json();
+
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioContext;
+
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+
+        inputSampleRate = audioContext.sampleRate;
+
+        client = new LiveClient({
+          token: tokenData.token,
+          model: tokenData.model,
+          speechProfile: getSpeechProfile(language),
+          onOpen: () => {
+            updateDebugSnapshot({ wsOpen: true });
+            setLiveStatus('Live API 已連線，正在準備聽寫...');
+          },
+          onSetupComplete: () => {
+            updateDebugSnapshot({ setupComplete: true });
+            setLiveStatus('連線成功，請開始說話...');
+          },
+          onAudioSent: () => {
+            updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
+          },
+          onTranscription: (text, isFinal) => {
+            updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
+            setLiveStatus('');
+            if (isFinal) {
+              transcriptRef.current += text;
+              setFinalTranscript(transcriptRef.current);
+              setInterimTranscript('');
+            } else {
+              setInterimTranscript(text);
+            }
+          },
+          onError: (err) => {
+            updateDebugSnapshot({ lastError: err });
+            void postDebugEvent('error');
+            if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
+              return;
+            }
+            setErrorMsg(err);
+            cleanupAudioPipeline();
+            setIsRecording(false);
+          },
+          onClose: (code, reason) => {
+            updateDebugSnapshot({ lastCloseCode: code, lastCloseReason: reason || '' });
+            void postDebugEvent('close');
+            console.log('WS Connection closed.');
+          }
+        });
+
+        liveClientRef.current = client;
+        client.connect();
+      }
+
+      // 5. Connect Worklet Processor (common to both engines)
       await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}pcm-processor.js`);
       const source = audioContext.createMediaStreamSource(stream);
       const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
@@ -380,7 +434,7 @@ export default function App() {
           audioChunks: liveDebugRef.current.audioChunks + 1,
           audioBytes: liveDebugRef.current.audioBytes + pcmBuffer.byteLength,
         });
-        // Send via live WebSocket Client
+        // Send via STT client
         client.sendAudioChunk(pcmBuffer);
       };
 
@@ -396,21 +450,41 @@ export default function App() {
   };
 
   const stopRealRecording = async () => {
-    liveClientRef.current?.sendAudioStreamEnd();
+    const useSenseVoice = language === 'yue' || language === 'mixed';
+    let finalText = '';
 
-    // Stop local capture immediately, but keep the WebSocket alive briefly so
-    // Gemini can flush the final inputTranscription after audioStreamEnd.
-    cleanupAudioPipeline(false);
-    setLiveStatus('正在等待最後聽寫...');
-    await waitForTranscript(3500);
+    if (useSenseVoice) {
+      // ── SenseVoice stop: flush remaining buffer + wait for all in-flight ──
+      const svClient = liveClientRef.current as SenseVoiceClient | null;
+      svClient?.sendAudioStreamEnd();
+      cleanupAudioPipeline(false);
+      setLiveStatus('正在等待最後聽寫...');
 
-    const finalText = transcriptRef.current || finalTranscript || interimTranscript;
+      finalText = await svClient?.waitForCompletion() || '';
 
-    if (liveClientRef.current) {
-      liveClientRef.current.disconnect();
-      liveClientRef.current = null;
+      if (liveClientRef.current) {
+        liveClientRef.current.disconnect();
+        liveClientRef.current = null;
+      }
+    } else {
+      // ── Gemini Live stop: send stream end, wait for final transcript ──
+      liveClientRef.current?.sendAudioStreamEnd();
+
+      // Stop local capture immediately, but keep the WebSocket alive briefly so
+      // Gemini can flush the final inputTranscription after audioStreamEnd.
+      cleanupAudioPipeline(false);
+      setLiveStatus('正在等待最後聽寫...');
+      await waitForTranscript(3500);
+
+      finalText = transcriptRef.current || finalTranscript || interimTranscript;
+
+      if (liveClientRef.current) {
+        liveClientRef.current.disconnect();
+        liveClientRef.current = null;
+      }
     }
 
+    // ── Common: send to Gemini cleanup API ──
     if (!finalText.trim()) {
       await postDebugEvent('no-transcript');
       setIsLoading(false);
