@@ -5,140 +5,83 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — PWA polish / 改善工作
+- **Phase**: Phase 2 — Cantonese ASR 替換完成，進入 UX polish
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
-- **Current deployed frontend build**: UI label `v09:23`; public bundle `assets/index-Dj5CH8cc.js` (GH Pages).
+- **Current deployed frontend build**: UI label `v12:14`
 - **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
-- **Milestone**: Phase 1 MVP 基本流程已由 Ben 實機確認跑通。
-- **Current goal**: Phase 2 transcript accuracy polish：先改善 Cantonese / Cantonese-English code-switching 的 Live transcription 準確度、latency、audio continuity；cleanup 暫不動。
+- **Milestone**: SenseVoice Cantonese ASR pipeline 已由 Ben 實機確認跑通（v12:14）。
 
 ## 2. Current Product Behavior
 
-- Mic 是 **tap-to-toggle**：
+- Mic 係 **tap-to-toggle**：
   1. 每個 page session 第一次點 Mic：只做 mic permission priming，不錄音。
   2. 第二次點 Mic：開始錄音。
-  3. 放手：繼續錄音，不停止。
-  4. 再點一次 Mic：停止錄音，送 `audioStreamEnd`，等待 transcript，然後呼叫 `/api/cleanup`。
-- `v09:23` 已實機確認：Home Screen PWA 基本流程 OK，false-positive `WebSocket 發生錯誤` 已消失。
-- Pre-commit automated verification 已通過：frontend typecheck/lint/test/build、backend ruff/pytest、`check.sh phase1`、public smoke。
-- Live setup 已修正：browser WebSocket `Blob` response 會先 decode 再 `JSON.parse`。
-- 有 transcript 後的 late WebSocket error 只記 telemetry，不顯示 user-facing error 或中斷 cleanup。
-- Cleanup 只吃真正 `serverContent.inputTranscription.text`；無 true transcript 不呼叫 `/api/cleanup`。
-- 在 `transcript-improve` branch：`mixed` language 會傳 Cantonese-English Live speech profile；`yue` internal value 會傳 Cantonese profile；Live audio 會先聚合成約 100ms PCM frames 再送 WebSocket，避免 mobile Safari 每 2–3ms 送 tiny frame。
-- Frontend 部署已從 Docker container (nginx) 遷移至 **GitHub Pages** (`https://benliu104.github.io/AITyping/`)，由 GitHub Actions 自動 deploy。Backend API 保留在 VPS (`https://aityping.bochibb.qzz.io`)。CORS 已配置 `benliu104.github.io`。
+  3. 再點一次 Mic：停止錄音，flush audio，等所有 SenseVoice requests 完成，然後呼叫 `/api/cleanup`。
+- **Language routing**：
+  - `en` / `zh-Hant` → Gemini Live WebSocket API
+  - `yue` / `mixed` → SenseVoice REST API（`https://aityping.bochibb.qzz.io/api/transcribe`）
+- SenseVoice 模式：前端每累積 2 秒 PCM（~64KB）encode 成 WAV ArrayBuffer，POST 至後端代理，後端轉發至 host SenseVoice（`http://172.19.0.1:8082`），邊講邊出字。
+- 停止錄音後 flush 剩餘 buffer，等全部 in-flight requests 完成，拼接 raw transcript 送 `/api/cleanup`。
+- **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `bochibb.qzz.io`，導致 fetch 在手機本地中斷（`Load failed`）。使用時需關閉 VPN。
 
 ## 3. Area Status
 
 | Area | Status | Notes |
 |---|---:|---|
-| Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA `v09:23` 基本流程跑通 |
-| Backend | ✅ Done | FastAPI config、`/api/live-token`、`/api/cleanup`、`/api/debug-event` |
-| Frontend | ✅ Done → GH Pages | Vite PWA、AudioWorklet、LiveClient、tap-to-toggle Mic；GitHub Pages auto-deploy from `transcript-improve` |
+| Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA 基本流程跑通 |
+| Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/debug-event`、`/api/transcribe`（SenseVoice proxy） |
+| Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（REST）、tap-to-toggle Mic |
+| SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；iptables 已開；Docker bridge `172.19.0.1` 通；ArrayBuffer fetch bypass Safari Blob MIME type bug |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
-| Deployment | ✅ Done (updated) | Frontend via GitHub Actions → GitHub Pages (`transcript-improve` branch); Backend via VPS Docker + Cloudflare Tunnel → port 8000 |
-| Phase 2 polish | 🎯 Current | Cantonese/Cantonese-English transcript hints done on branch; raw transcript/undo、partial vs committed、history/presets、debug mode、cancel flow still pending |
+| Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + Cloudflare Tunnel port 8000 |
+| Phase 2 UX polish | 🎯 Current | 下一步見 §6 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
 
-Latest accepted app verification:
-
 ```text
-ADHOC_RESULT TAP_TOGGLE_V09_23_VERIFY_OK
-PUBLIC_BUNDLE_OK /assets/index-D4VwSgM1.js
-```
-
-Latest automated verification on `transcript-improve`:
-
-```text
-2026-06-30 01:16 PDT — GH Pages deployment
-- GitHub Pages enabled: https://benliu104.github.io/AITyping/ ✅
-- Frontend build + deploy via GitHub Actions on push to transcripts-improve
-- Vite base=/AITyping/ (conditional: GITHUB_ACTIONS=true)
-- VITE_API_BASE_URL=https://aityping.bochibb.qzz.io ✅
-- Backend CORS updated: benliu104.github.io + aityping.bochibb.qzz.io ✅
-- .env override fixed (root .env was blocking CORS update) ✅
-- Cloudflare Tunnel → backend:8000 ✅
-- public /health ✅ {"status":"healthy"}
-- public /api/live-token ✅ 200
-- Github Pages frontend confirmed working (Ben's test)
+2026-06-30 ~13:00 PDT — Ben 實機確認 v12:14
+- yue mode：SenseVoice 成功接收並轉寫粵語（斷斷續續講都能抓到重點）
+- cleanup：raw transcript → 整理後乾淨繁中段落 ✅
+- backend log：多個 POST /api/transcribe 200 OK + POST /api/cleanup 200 OK
+- transcriptEvents=6, audioChunks=3943 ✅
 ```
 
 ```text
-2026-06-29 03:13 PDT
-Transcript pipeline focused update:
-- frontend: npm run test -- live-client.test.ts ✅ (13 passed)
-- frontend: npm run typecheck ✅
-- frontend: npm run lint ✅
-- frontend: npm run test ✅ (29 passed)
-- frontend: npm run build ✅ (/assets/index-DZPHYgzH.js)
-```
-
-Previous automated verification on `transcript-improve`:
-
-```text
-2026-06-29 02:18 PDT
-RED evidence:
-- frontend LiveClient focused test failed because setup instruction lacked `Cantonese-English`.
-- frontend App focused test failed because LiveClient config `speechProfile` was undefined.
-- backend adapter focused test failed because cleanup prompt lacked `Cantonese-English` / `Cantonese ASR` hints.
-GREEN/full verification:
-- frontend: npm run typecheck ✅; npm run lint ✅; npm run test ✅ (28 passed); npm run build ✅ (/assets/index-DO1hvK80.js)
-- backend: ruff check ✅; ruff format --check ✅; pytest ✅ (9 passed, 1 StarletteDeprecationWarning)
-- check.sh phase1 ✅ (8 passed, 0 failed, 0 skipped)
-```
-
-Previous automated verification before `transcript-improve`:
-
-```text
-2026-06-28 11:53 PDT
-frontend: npm run typecheck ✅; npm run lint ✅; npm run test ✅ (26 passed); npm run build ✅ (/assets/index-D4VwSgM1.js)
-backend: ruff check ✅; ruff format --check ✅; pytest ✅ (8 passed, 1 StarletteDeprecationWarning)
-check.sh phase1 ✅ (8 passed, 0 failed, 0 skipped)
-public smoke: GET / ✅; POST /api/live-token ✅ 200 (token redacted)
-docker: sudo docker compose ps ✅ backend/frontend Up; non-sudo docker needs docker group permission
-```
-
-Manual verification from Ben:
-
-```text
-v09:23 測試 OK，基本流程跑通，false-positive WebSocket error 已消失。
+2026-06-30 12:44 PDT — 自動化 CI 驗證
+- frontend: tsc --noEmit ✅
+- frontend: vitest 30/30 passed ✅
+- encodeWAV 返回 ArrayBuffer（不是 Blob）✅
+- GitHub Actions deploy: SUCCESS ✅
 ```
 
 ## 5. High-Signal Pitfalls
 
-Detailed history is in `ERRORS.md`; keep only current resume-critical pitfalls here:
-
-- **Do not re-add Docker cloudflared connector.** Tunnel uses host systemd `cloudflared.service`; Docker connector caused intermittent 502 because `localhost:8080` pointed at the tunnel container namespace.
-- **Do not use MediaRecorder.** Live API path depends on AudioWorklet raw PCM → resample to 16kHz → 16-bit little-endian PCM.
-- **Do not treat WebSocket `open` as ready.** Gemini audio should only flush after `setupComplete`.
-- **Do not parse WS messages as string-only.** Browser may deliver Google Live messages as `Blob`.
-- **Do not send status text to cleanup.** Only true Live transcript goes to `/api/cleanup`.
-- **Do not trust localStorage as mic permission truth.** Each page session first tap primes mic only.
-- **PRD is now v0.2.** Follow tap-to-toggle and `AUDIO` modality specs, not the old push-to-talk / `TEXT` modality assumptions.
+- **NordVPN / VPN block**：NordVPN 在 iOS 系統層（非瀏覽器層）攔截所有出站 DNS 查詢。`bochibb.qzz.io` 被 Threat Protection 判定可疑，DNS resolve 失敗 → fetch `Load failed`。解法：關閉 VPN 或將 domain 加入白名單。
+- **Safari Blob MIME type override bug**：`fetch` body 係 Blob 時，WebKit 採用 Blob 自身 `.type`（`audio/wav`）覆蓋 headers 裡設的 `Content-Type`，觸發 CORS preflight，然後 preflight 在 Safari 內部中斷。解法：用 `ArrayBuffer` 作 fetch body，無內建 MIME type，Safari 必須採用 header 設定。
+- **Docker 容器內不能用 `localhost` 連 host**：容器內 `localhost` 指容器自身。連接 host 機服務要用 docker bridge gateway IP（`172.19.0.1`）。
+- **iptables 預設 REJECT**：Oracle Cloud 預設封鎖非標準端口。已在 iptables INPUT chain 第 5 位插入 `ACCEPT tcp dport 8082`，並已持久化。
+- **pydantic-settings `.env` 優先**：`.env` / env var 永遠覆蓋 pydantic class default。改 CORS / config 後必查 production `.env`。
+- **Do not re-add Docker cloudflared connector**：Tunnel 用 host systemd `cloudflared.service`；Docker connector 造成 502。
+- **Do not use MediaRecorder**：Live API 依賴 AudioWorklet raw PCM。
+- **Do not trust localStorage as mic permission truth**：每個 page session 第一 tap 必定只 prime。
+- **Do not parse WS messages as string-only**：Browser 可能交付 Blob；需 normalize 後再 JSON.parse。
 
 ## 6. Next Steps
 
-1. **iPhone real-device A/B test for transcript accuracy**
-   - On `transcript-improve`, test Cantonese and Cantonese-English phrases against current production behavior.
-   - Capture raw transcript timing and completeness before cleanup; specifically test whether transcript appears during speech and whether second-half speech is still missing.
-   - If Gemini Live 3.1 still only returns after utterance end, evaluate Gemini 2.5 Live / manual VAD / alternative streaming STT before changing cleanup.
+1. **UX polish（可選）**
+   - 隱藏 debug counters 或移入 debug mode toggle
+   - 加入 raw transcript toggle / undo（cleanup 出錯可恢復）
+   - 清晰的 cancel flow（recording 中途可取消）
 
-2. **Phase 2 UX trust improvements**
-   - Add raw transcript toggle / undo so cleanup mistakes are recoverable.
-   - Split partial vs committed transcript if UI jumping becomes annoying.
+2. **VPN 相容性（長遠）**
+   - 考慮更換一個「正常」的 domain name，降低 VPN Threat Protection 誤判機率
 
-3. **Production UI cleanup**
-   - Hide visible debug counters or move them behind debug mode.
-   - Add a clear cancel flow for tap-to-toggle recording / cleanup.
-   - Update BUILD_LABEL from `v09:23` to reflect GH Pages epoch.
+3. **Phase 3 準備**
+   - Rate limiting
+   - Token endpoint access policy / auth
+   - Better offline / mic denied / API failure UX
 
-4. **Convenience improvements**
-   - History / local saved drafts.
-   - Prompt presets / favorites.
-
-5. **Phase 3 preparation**
-   - Rate limiting.
-   - Token endpoint access policy / auth.
-   - Better offline / mic denied / API failure UX.
+4. **Merge `transcript-improve` → `main`（待 Ben 確認）**
+   - SenseVoice pipeline 已穩定跑通，可考慮 merge 回主線

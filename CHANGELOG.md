@@ -51,6 +51,22 @@
 - 修復 GitHub Pages 空白頁：Vite `base` 未設 `/AITyping/` 導致 asset path 404。
 - 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
 
+## [0.3.0] - 2026-06-30
+
+### Added
+- **SenseVoice Cantonese ASR pipeline**：`yue` / `mixed` 語言模式改用本地 SenseVoice（FunASR）做 STT，取代 Gemini Live WebSocket。實機測試確認粵語識別遠優於 Gemini Live。
+- 新增 `frontend/src/live/sensevoice-client.ts`：每 2 秒 PCM buffer 切片 encode WAV，POST 至後端代理，`onTranscription` 回傳漸進式結果。
+- 新增後端 `/api/transcribe` 代理路由：接收 Raw Binary WAV，轉發至 host SenseVoice（`http://172.19.0.1:8082`）。
+- Language routing：`en`/`zh-Hant` → Gemini Live；`yue`/`mixed` → SenseVoice。
+
+### Fixed
+- **Safari Blob MIME type override bug**：`encodeWAV` 改返 `ArrayBuffer`（原為 `Blob[audio/wav]`），fetch body 用 `ArrayBuffer`，確保 `Content-Type: text/plain` simple request 不觸發 CORS preflight。
+- iptables 開通 port 8082（Oracle Cloud 預設 REJECT），已持久化。
+- Docker 容器連接 host SenseVoice 改用 bridge gateway `172.19.0.1`（非 `localhost`）。
+
+### Security
+- API key / token 不進前端 bundle，SenseVoice 調用走後端代理。
+
 ### Security
 - 前端不 hardcode `GEMINI_API_KEY`；真 key 只存在 backend `.env`。
 - `.env`、token、credential 維持 gitignored，不進 tracked files。
