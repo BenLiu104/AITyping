@@ -28,6 +28,7 @@
 - Cloudflare Tunnel 部署改為 host systemd `cloudflared.service` only；Docker Compose 不再管理 tunnel connector。
 - `AGENTS.md` 文件更新規則明確化：`STATUS.md` / `ERRORS.md` / `CHANGELOG.md` 分工、更新時機與避免重複原則。
 - `mixed` 語言模式現在優先視為 Cantonese-English code-switching；`yue` UI 值保留作內部相容，但 user-facing / prompt wording 改用 `Cantonese`。
+- Gemini Live audio streaming 改為約 100ms PCM frame 聚合，避免 iPhone / mobile network 每 2–3ms 送一個極細 WebSocket JSON/base64 frame。
 
 ### Fixed
 - 修復 Tailwind 未接入導致 production UI 退化的問題。
@@ -40,6 +41,7 @@
 - 修復 browser WebSocket `Blob` response parsing，確保 Live `setupComplete` 可被處理。
 - 修復 PWA late WebSocket error 覆蓋成功 transcript/cleanup 流程。
 - 修復 Cloudflare Tunnel connector 混用造成的 public URL 間歇 502。
+- 收緊 Cantonese / Cantonese-English Live setup prompt 的輸出語言範圍，避免 Mixed mode 漂移到 Japanese kana 或 Korean Hangul。
 
 ### Security
 - 前端不 hardcode `GEMINI_API_KEY`；真 key 只存在 backend `.env`。
@@ -50,3 +52,4 @@
 - 新增/更新 frontend regression tests for mic priming、tap-to-toggle、LiveClient、cleanup gating、PWA late error handling。
 - 維持 `typecheck` / `lint` / `test` / `build` / backend tests / `check.sh phase1` 作為交付驗證。
 - 新增 regression tests 覆蓋 Cantonese-English Live setup hints、App language → speech profile plumbing、cleanup Cantonese ASR repair prompt。
+- 新增 regression tests 覆蓋 LiveClient 100ms audio frame aggregation、setupComplete 前 buffer flush、audioStreamEnd 前 partial frame flush。

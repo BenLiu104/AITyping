@@ -7,9 +7,9 @@
 
 - **Phase**: Phase 2 — PWA polish / 改善工作
 - **Public URL**: `https://aityping.bochibb.qzz.io`
-- **Current deployed build**: `v09:23`
+- **Current deployed build**: UI label `v09:23`; public bundle `assets/index-DZPHYgzH.js` includes transcript pipeline fix.
 - **Milestone**: Phase 1 MVP 基本流程已由 Ben 實機確認跑通。
-- **Current goal**: Phase 2 transcript accuracy polish：先改善 Cantonese / Cantonese-English code-switching 的 Live transcription hints 與 cleanup ASR repair。
+- **Current goal**: Phase 2 transcript accuracy polish：先改善 Cantonese / Cantonese-English code-switching 的 Live transcription 準確度、latency、audio continuity；cleanup 暫不動。
 
 ## 2. Current Product Behavior
 
@@ -23,7 +23,7 @@
 - Live setup 已修正：browser WebSocket `Blob` response 會先 decode 再 `JSON.parse`。
 - 有 transcript 後的 late WebSocket error 只記 telemetry，不顯示 user-facing error 或中斷 cleanup。
 - Cleanup 只吃真正 `serverContent.inputTranscription.text`；無 true transcript 不呼叫 `/api/cleanup`。
-- 在 `transcript-improve` branch：`mixed` language 會傳 Cantonese-English Live speech profile；`yue` internal value 會傳 Cantonese profile；cleanup prompt 會按 Cantonese ASR repair 方向修正粵英聽寫錯字並保留英文專有名詞。
+- 在 `transcript-improve` branch：`mixed` language 會傳 Cantonese-English Live speech profile；`yue` internal value 會傳 Cantonese profile；Live audio 會先聚合成約 100ms PCM frames 再送 WebSocket，避免 mobile Safari 每 2–3ms 送 tiny frame。
 
 ## 3. Area Status
 
@@ -47,6 +47,28 @@ PUBLIC_BUNDLE_OK /assets/index-D4VwSgM1.js
 ```
 
 Latest automated verification on `transcript-improve`:
+
+```text
+2026-06-29 08:40 PDT
+Deployed transcript pipeline fix to public URL:
+- Docker frontend/backend rebuilt and containers recreated ✅
+- public root ✅ 200
+- public bundle ✅ assets/index-DZPHYgzH.js
+- public bundle markers ✅ targetAudioFrameBytes / Cantonese-English / Japanese-Korean drift guard
+- public /api/live-token ✅ 200 (token redacted)
+```
+
+```text
+2026-06-29 03:13 PDT
+Transcript pipeline focused update:
+- frontend: npm run test -- live-client.test.ts ✅ (13 passed)
+- frontend: npm run typecheck ✅
+- frontend: npm run lint ✅
+- frontend: npm run test ✅ (29 passed)
+- frontend: npm run build ✅ (/assets/index-DZPHYgzH.js)
+```
+
+Previous automated verification on `transcript-improve`:
 
 ```text
 2026-06-29 02:18 PDT
@@ -93,7 +115,8 @@ Detailed history is in `ERRORS.md`; keep only current resume-critical pitfalls h
 
 1. **iPhone real-device A/B test for transcript accuracy**
    - On `transcript-improve`, test Cantonese and Cantonese-English phrases against current production behavior.
-   - Capture raw transcript vs cleaned result; decide whether Live prompt + cleanup repair is enough or final audio re-transcription is needed.
+   - Capture raw transcript timing and completeness before cleanup; specifically test whether transcript appears during speech and whether second-half speech is still missing.
+   - If Gemini Live 3.1 still only returns after utterance end, evaluate Gemini 2.5 Live / manual VAD / alternative streaming STT before changing cleanup.
 
 2. **Phase 2 UX trust improvements**
    - Add raw transcript toggle / undo so cleanup mistakes are recoverable.
