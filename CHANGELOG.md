@@ -51,6 +51,14 @@
 - 修復 GitHub Pages 空白頁：Vite `base` 未設 `/AITyping/` 導致 asset path 404。
 - 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
 
+## [0.3.1] - 2026-06-30
+
+### Changed
+- **架構重構**：移除 AITyping backend 的 `/api/transcribe` proxy route。SenseVoice STT 現由前端直接呼叫 `https://sencevoice.bochibb.qzz.io/transcribe`，各服務各司其職。
+- `frontend/src/App.tsx`：`SenseVoiceClient.apiUrl` 從 `aityping.bochibb.qzz.io/api` 改為 `sencevoice.bochibb.qzz.io`。
+- `backend/app/main.py`：移除 `transcribe_router` import 及註冊。
+- 刪除 `backend/app/routes/transcribe.py`。
+
 ## [0.3.0] - 2026-06-30
 
 ### Added
