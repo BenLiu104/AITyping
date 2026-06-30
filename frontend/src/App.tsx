@@ -6,6 +6,9 @@ import { LiveClient, type SpeechProfile } from './live/live-client';
 
 const BUILD_LABEL = 'v09:23';
 
+// API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
 const getSpeechProfile = (language: Language): SpeechProfile => {
   if (language === 'mixed') return 'cantonese-english';
   if (language === 'yue') return 'cantonese';
@@ -145,7 +148,7 @@ export default function App() {
   const postDebugEvent = async (phase: string) => {
     const snapshot = liveDebugRef.current;
     try {
-      await fetch('/api/debug-event', {
+      await fetch(`${API_BASE}/api/debug-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phase, build: BUILD_LABEL, ...snapshot }),
@@ -264,7 +267,7 @@ export default function App() {
   };
 
   const callCleanupAPI = async (text: string): Promise<string> => {
-    const res = await fetch('/api/cleanup', {
+    const res = await fetch(`${API_BASE}/api/cleanup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -297,7 +300,7 @@ export default function App() {
 
       // 2. Get Ephemeral Token from backend (A4)
       setLiveStatus('正在連線 Live API...');
-      const tokenRes = await fetch('/api/live-token', { method: 'POST' });
+      const tokenRes = await fetch(`${API_BASE}/api/live-token`, { method: 'POST' });
       if (!tokenRes.ok) {
         throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
       }

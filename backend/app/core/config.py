@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
 
     # CORS 跨域設定
-    ALLOWED_ORIGINS: Union[str, List[str]] = ["https://aityping.bochibb.qzz.io"]
+    ALLOWED_ORIGINS: Union[str, List[str]] = [
+        "https://aityping.bochibb.qzz.io",
+        "https://benliu104.github.io",
+    ]
 
     # 開發輔助
     MOCK_MODE: bool = False
