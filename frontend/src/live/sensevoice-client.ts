@@ -124,12 +124,12 @@ export class SenseVoiceClient {
     const controller = new AbortController();
     this.pendingRequests.set(requestId, controller);
 
-    const wavBlob = this.encodeWAV(pcmBytes, this.config.sampleRate ?? 16000);
-    this.postChunk(wavBlob, requestId, controller);
+    const wavBuffer = this.encodeWAV(pcmBytes, this.config.sampleRate ?? 16000);
+    this.postChunk(wavBuffer, requestId, controller);
   }
 
   private async postChunk(
-    wavBlob: Blob,
+    wavBuffer: ArrayBuffer,
     requestId: string,
     controller: AbortController,
   ) {
@@ -139,7 +139,7 @@ export class SenseVoiceClient {
         headers: {
           'Content-Type': 'text/plain',
         },
-        body: wavBlob,
+        body: wavBuffer,
         signal: controller.signal,
       });
 
@@ -167,7 +167,7 @@ export class SenseVoiceClient {
     }
   }
 
-  private encodeWAV(pcmBytes: Uint8Array, sampleRate: number): Blob {
+  private encodeWAV(pcmBytes: Uint8Array, sampleRate: number): ArrayBuffer {
     const dataLen = pcmBytes.byteLength;
     const buffer = new ArrayBuffer(44 + dataLen);
     const view = new DataView(buffer);
@@ -194,6 +194,6 @@ export class SenseVoiceClient {
 
     new Uint8Array(buffer, 44).set(pcmBytes);
 
-    return new Blob([buffer], { type: 'audio/wav' });
+    return buffer;
   }
 }
