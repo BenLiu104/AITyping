@@ -5,7 +5,7 @@ import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
 import { SenseVoiceClient } from './live/sensevoice-client';
 
-const BUILD_LABEL = 'v12:14';
+const BUILD_LABEL = 'v12:15';
 
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -318,7 +318,7 @@ export default function App() {
         inputSampleRate = audioContext.sampleRate;
 
         client = new SenseVoiceClient({
-          apiUrl: 'https://aityping.bochibb.qzz.io/api',
+          apiUrl: 'https://sencevoice.bochibb.qzz.io',
           language: 'yue',
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });

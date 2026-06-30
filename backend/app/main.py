@@ -4,7 +4,6 @@ from app.core.config import settings
 from app.routes.cleanup import router as cleanup_router
 from app.routes.debug import router as debug_router
 from app.routes.token import router as token_router
-from app.routes.transcribe import router as transcribe_router
 
 app = FastAPI(
     title="AITyping Backend API",
@@ -25,7 +24,6 @@ app.add_middleware(
 app.include_router(cleanup_router, prefix="/api")
 app.include_router(token_router, prefix="/api")
 app.include_router(debug_router, prefix="/api")
-app.include_router(transcribe_router, prefix="/api")
 
 
 @app.get("/health", tags=["Health"])
