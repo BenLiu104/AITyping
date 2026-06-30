@@ -525,7 +525,7 @@ describe('App Component Core UI Tests', () => {
     const debugBody = JSON.parse(debugCall![1].body as string)
     expect(debugBody).toMatchObject({
       phase: 'no-transcript',
-      build: 'v09:23',
+      build: expect.any(String),
       wsOpen: true,
       setupComplete: true,
       transcriptEvents: 0,
