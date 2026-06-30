@@ -16,6 +16,8 @@
 - `/api/debug-event` telemetry endpoint for counters/status-only diagnostics。
 - Docker production deployment for backend/frontend on ARM64 VPS。
 - Phase 2 transcript accuracy polish：Live setup 支援 Cantonese / Cantonese-English speech profile hints，cleanup prompt 加 Cantonese ASR repair 指令。
+- GitHub Actions workflow for frontend auto-deploy to GitHub Pages on `transcript-improve` push。
+- `VITE_API_BASE_URL` env var support for production API endpoint configuration。
 
 ### Changed
 - `PRD.md` updated to v0.2：Phase 1 MVP 基本流程已跑通，產品進入 Phase 2 polish。
@@ -29,6 +31,10 @@
 - `AGENTS.md` 文件更新規則明確化：`STATUS.md` / `ERRORS.md` / `CHANGELOG.md` 分工、更新時機與避免重複原則。
 - `mixed` 語言模式現在優先視為 Cantonese-English code-switching；`yue` UI 值保留作內部相容，但 user-facing / prompt wording 改用 `Cantonese`。
 - Gemini Live audio streaming 改為約 100ms PCM frame 聚合，避免 iPhone / mobile network 每 2–3ms 送一個極細 WebSocket JSON/base64 frame。
+- Frontend 部署架構：從 Docker container (nginx) 改為 **GitHub Pages** + GitHub Actions CI/CD。
+- Vite `base` 配置加入條件式 `/AITyping/` (GitHub Pages project site subpath) 支援。
+- Backend CORS `ALLOWED_ORIGINS` 加入 `https://benliu104.github.io`。
+- Cloudflare Tunnel 目標端口從 frontend nginx (8080) 改為 backend (8000)。
 
 ### Fixed
 - 修復 Tailwind 未接入導致 production UI 退化的問題。
@@ -42,6 +48,8 @@
 - 修復 PWA late WebSocket error 覆蓋成功 transcript/cleanup 流程。
 - 修復 Cloudflare Tunnel connector 混用造成的 public URL 間歇 502。
 - 收緊 Cantonese / Cantonese-English Live setup prompt 的輸出語言範圍，避免 Mixed mode 漂移到 Japanese kana 或 Korean Hangul。
+- 修復 GitHub Pages 空白頁：Vite `base` 未設 `/AITyping/` 導致 asset path 404。
+- 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
 
 ### Security
 - 前端不 hardcode `GEMINI_API_KEY`；真 key 只存在 backend `.env`。

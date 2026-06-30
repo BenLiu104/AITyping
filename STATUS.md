@@ -6,8 +6,10 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 — PWA polish / 改善工作
-- **Public URL**: `https://aityping.bochibb.qzz.io`
-- **Current deployed build**: UI label `v09:23`; public bundle `assets/index-DZPHYgzH.js` includes transcript pipeline fix.
+- **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
+- **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
+- **Current deployed frontend build**: UI label `v09:23`; public bundle `assets/index-Dj5CH8cc.js` (GH Pages).
+- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
 - **Milestone**: Phase 1 MVP 基本流程已由 Ben 實機確認跑通。
 - **Current goal**: Phase 2 transcript accuracy polish：先改善 Cantonese / Cantonese-English code-switching 的 Live transcription 準確度、latency、audio continuity；cleanup 暫不動。
 
@@ -24,6 +26,7 @@
 - 有 transcript 後的 late WebSocket error 只記 telemetry，不顯示 user-facing error 或中斷 cleanup。
 - Cleanup 只吃真正 `serverContent.inputTranscription.text`；無 true transcript 不呼叫 `/api/cleanup`。
 - 在 `transcript-improve` branch：`mixed` language 會傳 Cantonese-English Live speech profile；`yue` internal value 會傳 Cantonese profile；Live audio 會先聚合成約 100ms PCM frames 再送 WebSocket，避免 mobile Safari 每 2–3ms 送 tiny frame。
+- Frontend 部署已從 Docker container (nginx) 遷移至 **GitHub Pages** (`https://benliu104.github.io/AITyping/`)，由 GitHub Actions 自動 deploy。Backend API 保留在 VPS (`https://aityping.bochibb.qzz.io`)。CORS 已配置 `benliu104.github.io`。
 
 ## 3. Area Status
 
@@ -31,9 +34,9 @@
 |---|---:|---|
 | Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA `v09:23` 基本流程跑通 |
 | Backend | ✅ Done | FastAPI config、`/api/live-token`、`/api/cleanup`、`/api/debug-event` |
-| Frontend | ✅ Done / polish next | Vite PWA、AudioWorklet、LiveClient、tap-to-toggle Mic |
+| Frontend | ✅ Done → GH Pages | Vite PWA、AudioWorklet、LiveClient、tap-to-toggle Mic；GitHub Pages auto-deploy from `transcript-improve` |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
-| Deployment | ✅ Done | Docker frontend/backend；Cloudflare Tunnel 走 host systemd Option A |
+| Deployment | ✅ Done (updated) | Frontend via GitHub Actions → GitHub Pages (`transcript-improve` branch); Backend via VPS Docker + Cloudflare Tunnel → port 8000 |
 | Phase 2 polish | 🎯 Current | Cantonese/Cantonese-English transcript hints done on branch; raw transcript/undo、partial vs committed、history/presets、debug mode、cancel flow still pending |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
@@ -49,13 +52,17 @@ PUBLIC_BUNDLE_OK /assets/index-D4VwSgM1.js
 Latest automated verification on `transcript-improve`:
 
 ```text
-2026-06-29 08:40 PDT
-Deployed transcript pipeline fix to public URL:
-- Docker frontend/backend rebuilt and containers recreated ✅
-- public root ✅ 200
-- public bundle ✅ assets/index-DZPHYgzH.js
-- public bundle markers ✅ targetAudioFrameBytes / Cantonese-English / Japanese-Korean drift guard
-- public /api/live-token ✅ 200 (token redacted)
+2026-06-30 01:16 PDT — GH Pages deployment
+- GitHub Pages enabled: https://benliu104.github.io/AITyping/ ✅
+- Frontend build + deploy via GitHub Actions on push to transcripts-improve
+- Vite base=/AITyping/ (conditional: GITHUB_ACTIONS=true)
+- VITE_API_BASE_URL=https://aityping.bochibb.qzz.io ✅
+- Backend CORS updated: benliu104.github.io + aityping.bochibb.qzz.io ✅
+- .env override fixed (root .env was blocking CORS update) ✅
+- Cloudflare Tunnel → backend:8000 ✅
+- public /health ✅ {"status":"healthy"}
+- public /api/live-token ✅ 200
+- Github Pages frontend confirmed working (Ben's test)
 ```
 
 ```text
@@ -125,6 +132,7 @@ Detailed history is in `ERRORS.md`; keep only current resume-critical pitfalls h
 3. **Production UI cleanup**
    - Hide visible debug counters or move them behind debug mode.
    - Add a clear cancel flow for tap-to-toggle recording / cleanup.
+   - Update BUILD_LABEL from `v09:23` to reflect GH Pages epoch.
 
 4. **Convenience improvements**
    - History / local saved drafts.
