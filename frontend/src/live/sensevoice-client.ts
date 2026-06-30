@@ -134,12 +134,13 @@ export class SenseVoiceClient {
     controller: AbortController,
   ) {
     try {
-      const res = await fetch(`${this.config.apiUrl}/transcribe?language=${this.config.language}`, {
+      const formData = new FormData();
+      formData.append('audio', new Blob([wavBuffer], { type: 'audio/wav' }), 'audio.wav');
+      formData.append('language', this.config.language);
+
+      const res = await fetch(`${this.config.apiUrl}/transcribe`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-        body: wavBuffer,
+        body: formData,
         signal: controller.signal,
       });
 
