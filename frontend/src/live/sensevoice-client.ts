@@ -137,7 +137,7 @@ export class SenseVoiceClient {
       const res = await fetch(`${this.config.apiUrl}/transcribe?language=${this.config.language}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'audio/wav',
+          'Content-Type': 'text/plain',
         },
         body: wavBlob,
         signal: controller.signal,
