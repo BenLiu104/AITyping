@@ -318,7 +318,7 @@ export default function App() {
         inputSampleRate = audioContext.sampleRate;
 
         client = new SenseVoiceClient({
-          apiUrl: 'https://sencevoice.bochibb.qzz.io',
+          apiUrl: 'https://aityping.bochibb.qzz.io/api',
           language: 'yue',
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });
