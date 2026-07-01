@@ -5,7 +5,7 @@ import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
 import { SenseVoiceWsClient } from './live/sensevoice-ws-client';
 
-const BUILD_LABEL = 'v12:19';
+const BUILD_LABEL = 'v01:35';
 
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -31,6 +31,8 @@ type LiveDebugSnapshot = {
   audioBytes: number;
   audioSent: number;
   transcriptEvents: number;
+  streamEndSent: boolean;
+  streamEndAck: boolean;
   lastCloseCode?: number;
   lastCloseReason: string;
   lastError: string;
@@ -43,6 +45,8 @@ const createDebugSnapshot = (): LiveDebugSnapshot => ({
   audioBytes: 0,
   audioSent: 0,
   transcriptEvents: 0,
+  streamEndSent: false,
+  streamEndAck: false,
   lastCloseReason: '',
   lastError: '',
 });
@@ -334,6 +338,12 @@ export default function App() {
           onAudioSent: () => {
             updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
           },
+          onEndSent: () => {
+            updateDebugSnapshot({ streamEndSent: true });
+          },
+          onEndAck: () => {
+            updateDebugSnapshot({ streamEndAck: true });
+          },
           onTranscription: (text, isFinal) => {
             updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
             setLiveStatus('');
@@ -468,8 +478,8 @@ export default function App() {
     if (useSenseVoice) {
       // ── SenseVoice stop: flush remaining buffer + wait for all in-flight ──
       const svClient = liveClientRef.current as SenseVoiceWsClient | null;
-      svClient?.sendAudioStreamEnd();
       cleanupAudioPipeline(false);
+      svClient?.sendAudioStreamEnd();
       setLiveStatus('正在等待最後聽寫...');
 
       finalText = await svClient?.waitForCompletion() || '';
@@ -708,7 +718,7 @@ export default function App() {
             )}
           </div>
           <p className="mt-2 text-[10px] text-[#6b7280]">
-            debug {BUILD_LABEL}: ws={liveDebug.wsOpen ? '1' : '0'} setup={liveDebug.setupComplete ? '1' : '0'} chunks={liveDebug.audioChunks} bytes={liveDebug.audioBytes} sent={liveDebug.audioSent} tx={liveDebug.transcriptEvents} close={liveDebug.lastCloseCode ?? '-'}
+            debug {BUILD_LABEL}: ws={liveDebug.wsOpen ? '1' : '0'} setup={liveDebug.setupComplete ? '1' : '0'} chunks={liveDebug.audioChunks} bytes={liveDebug.audioBytes} sent={liveDebug.audioSent} tx={liveDebug.transcriptEvents} end={liveDebug.streamEndSent ? '1' : '0'} ack={liveDebug.streamEndAck ? '1' : '0'} close={liveDebug.lastCloseCode ?? '-'}
           </p>
         </div>
 

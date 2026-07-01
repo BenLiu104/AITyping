@@ -36,9 +36,10 @@ vi.mock('../live/sensevoice-ws-client', () => ({
       senseVoiceClientMockState.latestClient = {
         connect: vi.fn(() => config.onOpen?.()),
         sendAudioChunk: vi.fn(),
-        sendAudioStreamEnd: vi.fn(),
+        sendAudioStreamEnd: vi.fn(() => config.onEndSent?.()),
         disconnect: vi.fn(),
         waitForCompletion: vi.fn().mockResolvedValue(''),
+        emitEndAck: vi.fn(() => config.onEndAck?.()),
       }
       return senseVoiceClientMockState.latestClient
     }
@@ -250,6 +251,28 @@ describe('App Component Core UI Tests', () => {
     expect(senseVoiceClientMockState.latestConfig.wsUrl).toContain('/ws/transcribe-v2')
     expect(senseVoiceClientMockState.latestConfig.language).toBe('auto')
     expect(senseVoiceClientMockState.latestClient).toBeTruthy()
+  })
+
+  it('passes yue language to SenseVoice when Cantonese is selected', async () => {
+    mockBrowserAudioPipeline()
+
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'yue' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(senseVoiceClientMockState.latestConfig.language).toBe('yue')
   })
 
   it('passes English speech profile to LiveClient when language is English', async () => {
@@ -609,6 +632,42 @@ describe('App Component Core UI Tests', () => {
 
     const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
     expect(textarea.value).toBe('整理後文字')
+  })
+
+  it('marks SenseVoice END sent and acked in debug output', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ cleaned: '整理後文字' }),
+      }))
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      fireEvent.pointerDown(micButton)
+      senseVoiceClientMockState.latestClient.emitEndAck()
+      await flushPromises()
+    })
+
+    expect(screen.getByText(/end=1 ack=1/)).toBeInTheDocument()
   })
 
   it('toggles settings menu when sliders button is clicked', async () => {

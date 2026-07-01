@@ -37,6 +37,7 @@
 - Backend CORS `ALLOWED_ORIGINS` 加入 `https://benliu104.github.io`。
 - Cloudflare Tunnel 目標端口從 frontend nginx (8080) 改為 backend (8000)。
 - `yue` / `mixed` 本地工作樹改為走 SenseVoice WebSocket `/ws/transcribe-v2`；`mixed` 送 `LANG:auto`，舊 `/ws/transcribe` route 保留作回退。
+- SenseVoice WebSocket client 改為約 100ms / 3200-byte PCM frame batching，避免 iPhone AudioWorklet 每 2–3ms 送極細 binary frame。
 
 ### Fixed
 - 修復 Tailwind 未接入導致 production UI 退化的問題。
@@ -54,6 +55,7 @@
 - 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
 - 修復 SenseVoice WS client 把 partial transcript 重複累積到 completion transcript 的問題。
 - 修復 SenseVoice 多句講述時，第一句 finalized 會遮住第二句 interim transcript，並修復 `waitForCompletion()` 空值時 cleanup 被錯誤跳過的問題。
+- 修復 SenseVoice 停止錄音時可能未送達 finalize `END` 的問題：停止時先關本地 capture、flush 剩餘 PCM，再等待 backend `end_ack`；debug row 加入 `end` / `ack` 狀態。
 
 ## [0.3.1] - 2026-06-30
 

@@ -17,7 +17,11 @@ export interface SenseVoiceWsClientConfig {
   onClose: (code?: number, reason?: string) => void;
   onOpen?: () => void;
   onAudioSent?: () => void;  // called each time a PCM chunk is sent
+  onEndSent?: () => void;
+  onEndAck?: () => void;
 }
+
+const TARGET_CHUNK_BYTES = 3200; // 100ms of 16kHz 16-bit mono PCM
 
 export class SenseVoiceWsClient {
   private config: SenseVoiceWsClientConfig;
@@ -27,6 +31,9 @@ export class SenseVoiceWsClient {
   private completionPromise: Promise<string> | null = null;
   private fullTranscript = '';
   private endAckReceived = false;
+  private endSent = false;
+  private pendingAudio = new Uint8Array(0);
+  private readonly targetChunkBytes = TARGET_CHUNK_BYTES;
 
   constructor(config: SenseVoiceWsClientConfig) {
     this.config = { sampleRate: 16000, ...config };
@@ -36,6 +43,8 @@ export class SenseVoiceWsClient {
   connect() {
     this.fullTranscript = '';
     this.endAckReceived = false;
+    this.endSent = false;
+    this.pendingAudio = new Uint8Array(0);
     this.completionPromise = new Promise((resolve) => {
       this.resolveCompletion = resolve;
     });
@@ -65,6 +74,7 @@ export class SenseVoiceWsClient {
         }
         if (data.end_ack) {
           this.endAckReceived = true;
+          this.config.onEndAck?.();
           this.resolveCompletion?.(this.fullTranscript);
           return;
         }
@@ -101,14 +111,41 @@ export class SenseVoiceWsClient {
    */
   sendAudioChunk(pcmBuffer: ArrayBuffer) {
     if (!this.isConnected || this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws!.send(pcmBuffer);
-    this.config.onAudioSent?.();
+    const incoming = new Uint8Array(pcmBuffer);
+    const merged = new Uint8Array(this.pendingAudio.length + incoming.length);
+    merged.set(this.pendingAudio);
+    merged.set(incoming, this.pendingAudio.length);
+    this.pendingAudio = merged;
+    this.flushAudioBuffer(false);
+  }
+
+  private flushAudioBuffer(force: boolean) {
+    if (!this.isConnected || this.ws?.readyState !== WebSocket.OPEN) return;
+    const flushBytes = force
+      ? this.pendingAudio.length
+      : Math.floor(this.pendingAudio.length / this.targetChunkBytes) * this.targetChunkBytes;
+    if (flushBytes <= 0) return;
+
+    let offset = 0;
+    while (offset < flushBytes) {
+      const end = Math.min(offset + this.targetChunkBytes, flushBytes);
+      const chunk = this.pendingAudio.slice(offset, end);
+      this.ws!.send(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+      this.config.onAudioSent?.();
+      offset = end;
+    }
+
+    this.pendingAudio = this.pendingAudio.slice(flushBytes);
   }
 
   /** 通知音訊結束，後端 flush 剩餘 buffer */
   sendAudioStreamEnd() {
+    if (this.endSent) return;
     if (this.ws?.readyState === WebSocket.OPEN) {
+      this.flushAudioBuffer(true);
       this.ws.send('END');
+      this.endSent = true;
+      this.config.onEndSent?.();
     } else {
       // WS already closed, resolve immediately
       this.resolveCompletion?.(this.fullTranscript);

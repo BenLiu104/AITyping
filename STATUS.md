@@ -9,7 +9,7 @@
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v12:19`
+- **Current deployed frontend build**: UI label `v01:35`
 - **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
 - **Milestone**: frontend + SenseVoice backend 已切到 `/ws/transcribe-v2` incremental event stream，舊 `/ws/transcribe` route 保留作回退。
 
@@ -26,6 +26,7 @@
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
 - Live transcript panel 現在顯示 `final + interim`，避免第一句 finalized 後把第二句 partial 完全遮住。
 - SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
+- SenseVoice WS client 現在把 iPhone AudioWorklet 的極細 PCM frames 聚合成約 100ms / 3200 bytes 才送出，停止時會先 flush 剩餘 audio 再送 `END`，debug row 顯示 `end` / `ack` 用嚟確認 backend finalize handshake。
 - **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `bochibb.qzz.io` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
 - 舊 `/ws/transcribe` silence-segmentation route 仍保留，方便回退；但本地新路徑已改用 `/ws/transcribe-v2`。
 
@@ -43,6 +44,16 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-01 01:41 PDT — SenseVoice frontend batching / END handshake fix
+- frontend: vitest app + SenseVoice WS client 19/19 ✅
+- frontend: tsc --noEmit ✅
+- frontend: npm run build ✅
+- regression covered: tiny PCM frames are batched to 3200-byte WS sends and remaining audio flushes before END ✅
+- regression covered: SenseVoice debug row shows end=1 / ack=1 after finalize ack ✅
+- regression covered: Cantonese UI mode sends LANG:yue to SenseVoice ✅
+```
 
 ```text
 2026-06-30 23:12 PDT — SenseVoice multi-sentence transcript / cleanup fallback fix
@@ -86,9 +97,9 @@
 
 ## 6. Next Steps
 
-1. **真機驗證 / deploy（下一步）**
-   - iPhone Safari 實測 `yue` / `mixed`：partial 穩定度、停止錄音 flush、cleanup 結果
-   - 如真機 OK，再 push frontend / sensevoice server 改動
+1. **真機驗證（下一步）**
+   - iPhone Safari 實測 frontend build `v01:35`：`yue` / `mixed` partial 穩定度、停止錄音 flush、debug `end=1 ack=1`、cleanup 結果
+   - 測完讀 `/tmp/sv-debug/*.summary.json` / `.jsonl` / `.wav` 對照 production trace
 
 2. **回退策略保留**
    - 若 v2 在真機上有卡頓或亂跳字，可暫時切回舊 `/ws/transcribe`
