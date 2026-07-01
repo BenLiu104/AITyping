@@ -5,14 +5,13 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — SenseVoice incremental WS v2 已接入本地工作樹，待真機驗證 / deploy
+- **Phase**: Phase 2 — SenseVoice incremental WS v2 已部署，等 iPhone 真機驗證
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v12:15`
-- **Current local frontend working tree**: UI label `v12:19`
+- **Current deployed frontend build**: UI label `v12:19`
 - **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
-- **Milestone**: 本地已從 SenseVoice REST polling 轉為 `/ws/transcribe-v2` incremental event stream，保留舊 route 作回退。
+- **Milestone**: frontend + SenseVoice backend 已切到 `/ws/transcribe-v2` incremental event stream，舊 `/ws/transcribe` route 保留作回退。
 
 ## 2. Current Product Behavior
 
@@ -25,6 +24,8 @@
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2`）
 - SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
+- Live transcript panel 現在顯示 `final + interim`，避免第一句 finalized 後把第二句 partial 完全遮住。
+- SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
 - **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `bochibb.qzz.io` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
 - 舊 `/ws/transcribe` silence-segmentation route 仍保留，方便回退；但本地新路徑已改用 `/ws/transcribe-v2`。
 
@@ -44,11 +45,24 @@
 ## 4. Current Verification Snapshot
 
 ```text
-2026-06-30 21:06 PDT — SenseVoice incremental WS v2 local verification
-- frontend: vitest 31/31 ✅
+2026-06-30 23:12 PDT — SenseVoice multi-sentence transcript / cleanup fallback fix
+- frontend: vitest app + SenseVoice WS client 16/16 ✅
 - frontend: tsc --noEmit ✅
+- frontend: npm run build ✅
+- regression covered: finalized first sentence no longer masks second-sentence interim ✅
+- regression covered: SenseVoice cleanup still runs when waitForCompletion() resolves empty ✅
+```
+
+```text
+2026-06-30 21:49 PDT — SenseVoice incremental WS v2 deploy verification
+- frontend: focused vitest 14/14 ✅
+- frontend: tsc --noEmit ✅
+- frontend: npm run build ✅
+- GH Pages workflow run 28494209785 ✅
+- public bundle contains `v12:19` + `/ws/transcribe-v2` ✅
 - voice_test: python -m unittest tests.test_ws_v2 -v ✅
-- ad-hoc E2E: local `api.py` + `/ws/transcribe-v2` + `/tmp/yue.wav` ✅
+- ad-hoc smoke: local ws://127.0.0.1:8082/ws/transcribe-v2 ✅
+- ad-hoc smoke: public wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2 ✅
 - WS evidence: partial_count=11, final_count=1, last_final="呢幾個字都表達唔到，我想講嘅意思。" ✅
 ```
 

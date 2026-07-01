@@ -53,6 +53,7 @@
 - 修復 GitHub Pages 空白頁：Vite `base` 未設 `/AITyping/` 導致 asset path 404。
 - 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
 - 修復 SenseVoice WS client 把 partial transcript 重複累積到 completion transcript 的問題。
+- 修復 SenseVoice 多句講述時，第一句 finalized 會遮住第二句 interim transcript，並修復 `waitForCompletion()` 空值時 cleanup 被錯誤跳過的問題。
 
 ## [0.3.1] - 2026-06-30
 

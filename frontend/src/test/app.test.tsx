@@ -538,6 +538,79 @@ describe('App Component Core UI Tests', () => {
     expect(textarea.value).toBe('')
   })
 
+  it('shows finalized and interim SenseVoice transcript together while recording', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      senseVoiceClientMockState.latestConfig.onTranscription('第二句未完', false)
+    })
+
+    expect(screen.getByText('第一句。第二句未完')).toBeInTheDocument()
+  })
+
+  it('falls back to visible SenseVoice transcript for cleanup when waitForCompletion resolves empty', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ cleaned: '整理後文字' }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      senseVoiceClientMockState.latestConfig.onTranscription('第二句未完', false)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(senseVoiceClientMockState.latestClient.sendAudioStreamEnd).toHaveBeenCalled()
+    expect(senseVoiceClientMockState.latestClient.waitForCompletion).toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/cleanup', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('第一句。第二句未完'),
+    }))
+
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('整理後文字')
+  })
+
   it('toggles settings menu when sliders button is clicked', async () => {
     render(<App />)
 

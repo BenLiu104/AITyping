@@ -459,6 +459,8 @@ export default function App() {
     }
   };
 
+  const getVisibleTranscript = () => `${finalTranscript}${interimTranscript}`;
+
   const stopRealRecording = async () => {
     const useSenseVoice = language === 'yue' || language === 'mixed';
     let finalText = '';
@@ -471,6 +473,9 @@ export default function App() {
       setLiveStatus('正在等待最後聽寫...');
 
       finalText = await svClient?.waitForCompletion() || '';
+      if (!finalText.trim()) {
+        finalText = `${transcriptRef.current}${interimTranscript}` || getVisibleTranscript();
+      }
 
       if (liveClientRef.current) {
         liveClientRef.current.disconnect();
@@ -695,7 +700,7 @@ export default function App() {
           </div>
           <div className="flex-1 text-sm leading-relaxed text-zinc-300">
             {finalTranscript || interimTranscript ? (
-              <p>{finalTranscript || interimTranscript}</p>
+              <p>{getVisibleTranscript()}</p>
             ) : liveStatus ? (
               <p className="text-[#8e8e93] italic">{liveStatus}</p>
             ) : (
