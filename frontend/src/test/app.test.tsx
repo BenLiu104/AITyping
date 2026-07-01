@@ -29,8 +29,8 @@ vi.mock('../live/live-client', () => ({
   },
 }))
 
-vi.mock('../live/sensevoice-client', () => ({
-  SenseVoiceClient: class {
+vi.mock('../live/sensevoice-ws-client', () => ({
+  SenseVoiceWsClient: class {
     constructor(config: any) {
       senseVoiceClientMockState.latestConfig = config
       senseVoiceClientMockState.latestClient = {
@@ -247,7 +247,8 @@ describe('App Component Core UI Tests', () => {
     })
 
     expect(senseVoiceClientMockState.latestConfig).toBeTruthy()
-    expect(senseVoiceClientMockState.latestConfig.language).toBe('yue')
+    expect(senseVoiceClientMockState.latestConfig.wsUrl).toContain('/ws/transcribe-v2')
+    expect(senseVoiceClientMockState.latestConfig.language).toBe('auto')
     expect(senseVoiceClientMockState.latestClient).toBeTruthy()
   })
 

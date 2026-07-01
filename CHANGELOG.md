@@ -18,6 +18,7 @@
 - Phase 2 transcript accuracy polish：Live setup 支援 Cantonese / Cantonese-English speech profile hints，cleanup prompt 加 Cantonese ASR repair 指令。
 - GitHub Actions workflow for frontend auto-deploy to GitHub Pages on `transcript-improve` push。
 - `VITE_API_BASE_URL` env var support for production API endpoint configuration。
+- SenseVoice incremental WebSocket adapter `/ws/transcribe-v2`，輸出 partial/final/end_ack 事件流。
 
 ### Changed
 - `PRD.md` updated to v0.2：Phase 1 MVP 基本流程已跑通，產品進入 Phase 2 polish。
@@ -35,6 +36,7 @@
 - Vite `base` 配置加入條件式 `/AITyping/` (GitHub Pages project site subpath) 支援。
 - Backend CORS `ALLOWED_ORIGINS` 加入 `https://benliu104.github.io`。
 - Cloudflare Tunnel 目標端口從 frontend nginx (8080) 改為 backend (8000)。
+- `yue` / `mixed` 本地工作樹改為走 SenseVoice WebSocket `/ws/transcribe-v2`；`mixed` 送 `LANG:auto`，舊 `/ws/transcribe` route 保留作回退。
 
 ### Fixed
 - 修復 Tailwind 未接入導致 production UI 退化的問題。
@@ -50,6 +52,7 @@
 - 收緊 Cantonese / Cantonese-English Live setup prompt 的輸出語言範圍，避免 Mixed mode 漂移到 Japanese kana 或 Korean Hangul。
 - 修復 GitHub Pages 空白頁：Vite `base` 未設 `/AITyping/` 導致 asset path 404。
 - 修復 CORS 配置被 root `.env` `ALLOWED_ORIGINS` 變數 override 導致 `benliu104.github.io` 被拒絕。
+- 修復 SenseVoice WS client 把 partial transcript 重複累積到 completion transcript 的問題。
 
 ## [0.3.1] - 2026-06-30
 

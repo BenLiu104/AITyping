@@ -69,9 +69,12 @@ export class SenseVoiceWsClient {
           return;
         }
         const text = data.transcript ?? '';
+        const isFinal = data.is_final ?? true;
         if (text.trim()) {
-          this.fullTranscript += text;
-          this.config.onTranscription(text, data.is_final ?? true);
+          if (isFinal) {
+            this.fullTranscript += text;
+          }
+          this.config.onTranscription(text, isFinal);
         }
       } catch {
         // ignore non-JSON frames

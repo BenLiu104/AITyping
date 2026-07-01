@@ -17,6 +17,13 @@ const getSpeechProfile = (language: Language): SpeechProfile => {
   return 'auto';
 };
 
+const getSenseVoiceLanguage = (language: Language): string => {
+  if (language === 'mixed') return 'auto';
+  if (language === 'yue') return 'yue';
+  if (language === 'en') return 'en';
+  return 'zh';
+};
+
 type LiveDebugSnapshot = {
   wsOpen: boolean;
   setupComplete: boolean;
@@ -318,8 +325,8 @@ export default function App() {
         inputSampleRate = audioContext.sampleRate;
 
         client = new SenseVoiceWsClient({
-          wsUrl: 'wss://sencevoice.bochibb.qzz.io/ws/transcribe',
-          language: 'yue',
+          wsUrl: 'wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2',
+          language: getSenseVoiceLanguage(language),
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });
             setLiveStatus('SenseVoice 已就緒，請開始說話...');
