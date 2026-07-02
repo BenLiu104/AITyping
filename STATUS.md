@@ -5,13 +5,13 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — SenseVoice incremental WS v2 已部署，等 iPhone 真機驗證
+- **Phase**: Phase 2 — SenseVoice incremental WS v2 已部署，iPhone 真機效果滿意；暫時收工
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
 - **Current deployed frontend build**: UI label `v01:35`
 - **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
-- **Milestone**: frontend + SenseVoice backend 已切到 `/ws/transcribe-v2` incremental event stream，舊 `/ws/transcribe` route 保留作回退。
+- **Milestone**: frontend + SenseVoice backend 已切到 `/ws/transcribe-v2` incremental event stream；frontend build `v01:35` 已由 Ben 真機確認效果滿意，舊 `/ws/transcribe` route 保留作回退。
 
 ## 2. Current Product Behavior
 
@@ -40,10 +40,17 @@
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | 🎯 Current | 下一步見 §6 |
+| Phase 2 UX polish | ✅ Paused | SenseVoice v2 真機效果滿意；下一步見 §6 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-01 01:52 PDT — Ben iPhone PWA acceptance
+- frontend build `v01:35` 真機效果滿意 ✅
+- SenseVoice v2 多句 / stop finalize 行為可暫時收工 ✅
+- project state converged into STATUS / CHANGELOG / ERRORS ✅
+```
 
 ```text
 2026-07-01 01:41 PDT — SenseVoice frontend batching / END handshake fix
@@ -97,9 +104,9 @@
 
 ## 6. Next Steps
 
-1. **真機驗證（下一步）**
-   - iPhone Safari 實測 frontend build `v01:35`：`yue` / `mixed` partial 穩定度、停止錄音 flush、debug `end=1 ack=1`、cleanup 結果
-   - 測完讀 `/tmp/sv-debug/*.summary.json` / `.jsonl` / `.wav` 對照 production trace
+1. **暫停開發 / 保持觀察（目前狀態）**
+   - `v01:35` 已由 Ben 真機確認效果滿意；不再繼續調 SenseVoice v2。
+   - 若之後再次出現 transcript 漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` / `.jsonl` / `.wav` 對照 production trace。
 
 2. **回退策略保留**
    - 若 v2 在真機上有卡頓或亂跳字，可暫時切回舊 `/ws/transcribe`
@@ -110,4 +117,4 @@
    - Better offline / mic denied / API failure UX
 
 4. **Merge `transcript-improve` → `main`（待 Ben 確認）**
-   - 等 v2 真機驗證完成後再考慮 merge 回主線
+   - `v01:35` 真機效果已滿意；如要收主線，下一步可開 merge / PR。
