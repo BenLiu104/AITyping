@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `transcript-improve` branch merged into `main`（Phase 2 SenseVoice v2 正式關閉。GitHub Pages frontend 仍由 `transcript-improve` push 觸發 deploy）。
+
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。
 - FastAPI backend：config、CORS、Gemini adapter、`/api/live-token`、`/api/cleanup`。

@@ -5,13 +5,13 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — SenseVoice incremental WS v2 已部署，iPhone 真機效果滿意；暫時收工
-- **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `transcript-improve` branch)
+- **Phase**: Phase 2 完成 — SenseVoice incremental WS v2 merged into `main`
+- **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `main` branch)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
 - **Current deployed frontend build**: UI label `v01:35`
-- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)
-- **Milestone**: frontend + SenseVoice backend 已切到 `/ws/transcribe-v2` incremental event stream；frontend build `v01:35` 已由 Ben 真機確認效果滿意，舊 `/ws/transcribe` route 保留作回退。
+- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)；`main` 不觸發 deploy
+- **Milestone**: `transcript-improve` merged into `main` ✅  — 包含 SenseVoice v2、Gemini Live WS、AudioWorklet、GH Actions CI/CD、全部 regression tests
 
 ## 2. Current Product Behavior
 
@@ -40,10 +40,17 @@
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | ✅ Paused | SenseVoice v2 真機效果滿意；下一步見 §6 |
+| Phase 2 UX polish | ✅ Done | SenseVoice v2 真機效果滿意；branch merged into `main` |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-02 09:45 PDT — Merge transcript-improve → main
+- `transcript-improve` merged into `main` ✅  (0 conflicts, 16 files, 1257 insertions)
+- both branches pushed to origin ✅
+- Phase 2 SenseVoice v2 closed: merged into production main branch
+```
 
 ```text
 2026-07-01 01:52 PDT — Ben iPhone PWA acceptance
@@ -105,16 +112,10 @@
 ## 6. Next Steps
 
 1. **暫停開發 / 保持觀察（目前狀態）**
-   - `v01:35` 已由 Ben 真機確認效果滿意；不再繼續調 SenseVoice v2。
+   - `v01:35` 已由 Ben 真機確認效果滿意；`transcript-improve` 已 merge 到 `main`，Phase 2 正式關閉。
    - 若之後再次出現 transcript 漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` / `.jsonl` / `.wav` 對照 production trace。
 
-2. **回退策略保留**
-   - 若 v2 在真機上有卡頓或亂跳字，可暫時切回舊 `/ws/transcribe`
-
-3. **Phase 3 準備**
+2. **Phase 3 — Stability & Security**
    - Rate limiting
    - Token endpoint access policy / auth
    - Better offline / mic denied / API failure UX
-
-4. **Merge `transcript-improve` → `main`（待 Ben 確認）**
-   - `v01:35` 真機效果已滿意；如要收主線，下一步可開 merge / PR。
