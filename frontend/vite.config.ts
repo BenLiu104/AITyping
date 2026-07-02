@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // GitHub Pages project site 需要 subpath base
+  base: process.env.GITHUB_ACTIONS ? '/AITyping/' : '/',
   plugins: [
     react(),
     tailwindcss(),
@@ -45,6 +47,14 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',

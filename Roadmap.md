@@ -57,7 +57,8 @@
 ## Phase 2 — PWA 打磨（變得好用）🎯 Current
 
 - [x] Cleanup 模式：訊息 / Email / TODO / Prompt（B2/B6 提前實作）
-- [x] 語言模式：繁中 / 英文 / 中英混合 / 粵語口語 → 書面（B2/B6 提前實作）
+- [x] 語言模式：繁中 / 英文 / 中英混合 / Cantonese（內部相容值仍為 `yue`）
+- [x] Cantonese / Cantonese-English transcript accuracy polish：Live speech profile hints + cleanup Cantonese ASR repair prompt
 - [ ] 即時 partial vs committed transcript 分離（避免跳動）
 - [ ] History（本地）、prompt presets / favorites
 - [x] Auto-copy after cleanup、震動回饋（B2/B6 提前實作）

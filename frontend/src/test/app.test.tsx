@@ -7,6 +7,11 @@ const liveClientMockState = vi.hoisted(() => ({
   latestClient: undefined as any,
 }))
 
+const senseVoiceClientMockState = vi.hoisted(() => ({
+  latestConfig: undefined as any,
+  latestClient: undefined as any,
+}))
+
 vi.mock('../live/live-client', () => ({
   LiveClient: class {
     constructor(config: any) {
@@ -20,6 +25,23 @@ vi.mock('../live/live-client', () => ({
         emitError: vi.fn((message: string) => config.onError?.(message)),
       }
       return liveClientMockState.latestClient
+    }
+  },
+}))
+
+vi.mock('../live/sensevoice-ws-client', () => ({
+  SenseVoiceWsClient: class {
+    constructor(config: any) {
+      senseVoiceClientMockState.latestConfig = config
+      senseVoiceClientMockState.latestClient = {
+        connect: vi.fn(() => config.onOpen?.()),
+        sendAudioChunk: vi.fn(),
+        sendAudioStreamEnd: vi.fn(() => config.onEndSent?.()),
+        disconnect: vi.fn(),
+        waitForCompletion: vi.fn().mockResolvedValue(''),
+        emitEndAck: vi.fn(() => config.onEndAck?.()),
+      }
+      return senseVoiceClientMockState.latestClient
     }
   },
 }))
@@ -86,6 +108,8 @@ afterEach(() => {
   window.localStorage.clear()
   liveClientMockState.latestConfig = undefined
   liveClientMockState.latestClient = undefined
+  senseVoiceClientMockState.latestConfig = undefined
+  senseVoiceClientMockState.latestClient = undefined
 })
 
 describe('App Component Core UI Tests', () => {
@@ -201,6 +225,84 @@ describe('App Component Core UI Tests', () => {
     expect(screen.queryByText(/正在聽寫\.\.\./i)).not.toBeInTheDocument()
   })
 
+  it('uses SenseVoice for Cantonese/mixed and LiveClient for English', async () => {
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
+    }))
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    // Default is 'mixed' → SenseVoiceClient
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(senseVoiceClientMockState.latestConfig).toBeTruthy()
+    expect(senseVoiceClientMockState.latestConfig.wsUrl).toContain('/ws/transcribe-v2')
+    expect(senseVoiceClientMockState.latestConfig.language).toBe('auto')
+    expect(senseVoiceClientMockState.latestClient).toBeTruthy()
+  })
+
+  it('passes yue language to SenseVoice when Cantonese is selected', async () => {
+    mockBrowserAudioPipeline()
+
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'yue' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(senseVoiceClientMockState.latestConfig.language).toBe('yue')
+  })
+
+  it('passes English speech profile to LiveClient when language is English', async () => {
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
+    }))
+
+    render(<App />)
+
+    // Switch language to English first
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(liveClientMockState.latestConfig.speechProfile).toBe('english')
+  })
+
   it('cleans up Live input transcription after push-to-talk release', async () => {
     vi.useFakeTimers()
     window.localStorage.setItem('aityping:mic-permission-primed', 'true')
@@ -222,6 +324,11 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -278,6 +385,11 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -341,6 +453,11 @@ describe('App Component Core UI Tests', () => {
 
     render(<App />)
 
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
       fireEvent.pointerDown(micButton)
@@ -396,6 +513,11 @@ describe('App Component Core UI Tests', () => {
 
     render(<App />)
 
+    // Switch to English so LiveClient is used
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
       fireEvent.pointerDown(micButton)
@@ -427,7 +549,7 @@ describe('App Component Core UI Tests', () => {
     const debugBody = JSON.parse(debugCall![1].body as string)
     expect(debugBody).toMatchObject({
       phase: 'no-transcript',
-      build: 'v09:23',
+      build: expect.any(String),
       wsOpen: true,
       setupComplete: true,
       transcriptEvents: 0,
@@ -437,6 +559,115 @@ describe('App Component Core UI Tests', () => {
 
     const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
     expect(textarea.value).toBe('')
+  })
+
+  it('shows finalized and interim SenseVoice transcript together while recording', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      senseVoiceClientMockState.latestConfig.onTranscription('第二句未完', false)
+    })
+
+    expect(screen.getByText('第一句。第二句未完')).toBeInTheDocument()
+  })
+
+  it('falls back to visible SenseVoice transcript for cleanup when waitForCompletion resolves empty', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ cleaned: '整理後文字' }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      senseVoiceClientMockState.latestConfig.onTranscription('第二句未完', false)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(senseVoiceClientMockState.latestClient.sendAudioStreamEnd).toHaveBeenCalled()
+    expect(senseVoiceClientMockState.latestClient.waitForCompletion).toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/cleanup', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('第一句。第二句未完'),
+    }))
+
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('整理後文字')
+  })
+
+  it('marks SenseVoice END sent and acked in debug output', async () => {
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ cleaned: '整理後文字' }),
+      }))
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('第一句。', true)
+      fireEvent.pointerDown(micButton)
+      senseVoiceClientMockState.latestClient.emitEndAck()
+      await flushPromises()
+    })
+
+    expect(screen.getByText(/end=1 ack=1/)).toBeInTheDocument()
   })
 
   it('toggles settings menu when sliders button is clicked', async () => {

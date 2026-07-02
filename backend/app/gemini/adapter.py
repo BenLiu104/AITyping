@@ -130,8 +130,8 @@ class GeminiAdapter:
         language_prompts = {
             "zh-Hant": "語言：繁體中文。請確保輸出完全為流暢的繁體中文（台灣/香港常用用語）。",
             "en": "語言：英文。請確保輸出完全為流暢專業的英文。",
-            "mixed": "語言：中英混合。請保留原本自然的「中英混合」夾雜特點，不要強行翻譯專有名詞（如 iPhone、meeting、App 等），確保半形空格與前後中文相接自然。",
-            "yue": "語言：粵語轉書面。用戶口述的是廣東話/粵語，請在保留原意與語氣的前提下，將其「粵語口語」翻譯並整理成得體、通順的「繁體中文書面語」（將「唔好」轉為「不要」、「佢哋」轉為「他們」等）。",
+            "mixed": "語言：Cantonese-English mixed speech。原始聽寫可能含有 Cantonese ASR 錯字。請修復最可能的粵英夾雜語音輸入，使用香港繁體中文表達 Cantonese，Preserve English words, product names, app names, and technical terms in English，不要把英文翻成中文，不要把 Cantonese 改成普通話式中文。",
+            "yue": "語言：Cantonese。原始聽寫可能含有 Cantonese ASR 錯字。用戶口述的是香港廣東話，請在保留原意與語氣的前提下，使用香港繁體中文整理；可修正明顯聽寫錯字，但不要新增內容。",
         }
 
         user_content = (

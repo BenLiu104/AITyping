@@ -4,9 +4,31 @@
  * 負責處理與 Google Gemini Live WebSocket 雙向串流連線 (PRD §8)
  */
 
+export type SpeechProfile = 'auto' | 'cantonese' | 'cantonese-english' | 'english';
+
+const BASE_TRANSCRIPTION_INSTRUCTION =
+  "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.";
+
+function buildTranscriptionInstruction(profile: SpeechProfile = 'auto'): string {
+  if (profile === 'cantonese-english') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user often speaks Cantonese-English code-switching from a Hong Kong Cantonese speaker. Transcribe Hong Kong Cantonese in Traditional Chinese with Hong Kong wording. Preserve English words, product names, app names, and technical terms in English. Do not translate English into Chinese. Do not convert Cantonese into Mandarin-style phrasing. Output only Traditional Chinese characters and English Latin-script words. Never output Japanese kana or Korean Hangul; if language detection is uncertain, prefer Hong Kong Traditional Chinese plus preserved English terms.`;
+  }
+
+  if (profile === 'cantonese') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks Hong Kong Cantonese. Transcribe Cantonese in Traditional Chinese with Hong Kong wording. Preserve English product names, app names, and technical terms in English. Do not convert Cantonese into Mandarin-style phrasing. Output only Traditional Chinese characters and English Latin-script words. Never output Japanese kana or Korean Hangul.`;
+  }
+
+  if (profile === 'english') {
+    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks English. Preserve English spelling, product names, app names, and technical terms exactly when possible.`;
+  }
+
+  return BASE_TRANSCRIPTION_INSTRUCTION;
+}
+
 export interface LiveClientConfig {
   token: string;
   model: string;
+  speechProfile?: SpeechProfile;
   onTranscription: (text: string, isFinal: boolean) => void;
   onError: (error: string) => void;
   onClose: (code?: number, reason?: string) => void;
@@ -31,11 +53,15 @@ export class LiveClient {
   private isSetupComplete = false;
   private pendingAudioMessages: AudioMessage[] = [];
   private pendingAudioStreamEnd = false;
+  private pendingAudioFrameBytes = new Uint8Array(0);
   // AudioWorklet commonly emits 128-frame render quanta. At 48kHz that is only
-  // ~2.7ms before resampling, so a 50-message setup buffer loses nearly all
-  // speech when Live setup takes >150ms. Keep roughly 5s to preserve the user's
-  // first words while still bounding memory.
-  private readonly maxPendingAudioMessages = 2000;
+  // ~2.7ms before resampling. Sending one WebSocket message per quantum creates
+  // thousands of tiny JSON/base64 frames, which is fragile on mobile networks and
+  // can make Gemini's server buffer behave like it missed later speech. Aggregate
+  // into ~100ms PCM frames: 16k samples/sec * 2 bytes/sample * 0.1 sec = 3200.
+  private readonly targetAudioFrameBytes = 3200;
+  // After aggregation, 60 pending frames is roughly 6s of setup buffer.
+  private readonly maxPendingAudioMessages = 60;
 
   constructor(config: LiveClientConfig) {
     this.config = config;
@@ -104,7 +130,31 @@ export class LiveClient {
       return;
     }
 
-    const bytes = new Uint8Array(pcmBuffer);
+    this.appendAudioBytes(new Uint8Array(pcmBuffer));
+
+    while (this.pendingAudioFrameBytes.byteLength >= this.targetAudioFrameBytes) {
+      const frameBytes = this.pendingAudioFrameBytes.slice(0, this.targetAudioFrameBytes);
+      this.pendingAudioFrameBytes = this.pendingAudioFrameBytes.slice(this.targetAudioFrameBytes);
+      this.queueOrSendAudioBytes(frameBytes);
+    }
+  }
+
+  private appendAudioBytes(bytes: Uint8Array) {
+    const combined = new Uint8Array(this.pendingAudioFrameBytes.byteLength + bytes.byteLength);
+    combined.set(this.pendingAudioFrameBytes, 0);
+    combined.set(bytes, this.pendingAudioFrameBytes.byteLength);
+    this.pendingAudioFrameBytes = combined;
+  }
+
+  private flushCurrentAudioFrame() {
+    if (this.pendingAudioFrameBytes.byteLength === 0) {
+      return;
+    }
+    this.queueOrSendAudioBytes(this.pendingAudioFrameBytes);
+    this.pendingAudioFrameBytes = new Uint8Array(0);
+  }
+
+  private queueOrSendAudioBytes(bytes: Uint8Array) {
     let binary = "";
     const len = bytes.byteLength;
     for (let i = 0; i < len; i++) {
@@ -138,6 +188,8 @@ export class LiveClient {
     if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
+
+    this.flushCurrentAudioFrame();
 
     if (!this.isSetupComplete) {
       this.pendingAudioStreamEnd = true;
@@ -173,7 +225,7 @@ export class LiveClient {
         systemInstruction: {
           parts: [
             {
-              text: "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.",
+              text: buildTranscriptionInstruction(this.config.speechProfile),
             },
           ],
         },
@@ -251,6 +303,7 @@ export class LiveClient {
       this.sendAudioMessage(message);
     }
     this.pendingAudioMessages = [];
+    this.flushCurrentAudioFrame();
 
     if (this.pendingAudioStreamEnd) {
       this.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
@@ -271,5 +324,6 @@ export class LiveClient {
     this.isSetupComplete = false;
     this.pendingAudioMessages = [];
     this.pendingAudioStreamEnd = false;
+    this.pendingAudioFrameBytes = new Uint8Array(0);
   }
 }

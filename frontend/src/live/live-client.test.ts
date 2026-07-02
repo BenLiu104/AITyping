@@ -70,6 +70,30 @@ describe('LiveClient WebSockets Integration Tests', () => {
     expect(sentData.setup.inputAudioTranscription).toEqual({});
   });
 
+  it('should include Cantonese-English transcription hints in setup when requested', () => {
+    const client = new LiveClient({
+      token: 'test_token',
+      model: 'models/gemini-3.1-flash-live-preview',
+      speechProfile: 'cantonese-english',
+      onTranscription: mockOnTranscription,
+      onError: mockOnError,
+      onClose: mockOnClose,
+    });
+
+    client.connect();
+    const ws = wsInstances[0];
+    ws.readyState = 1;
+    ws.onopen?.();
+
+    const sentData = JSON.parse(lastMockSend.mock.calls[0][0]);
+    const instruction = sentData.setup.systemInstruction.parts[0].text;
+    expect(instruction).toContain('Cantonese-English');
+    expect(instruction).toContain('Hong Kong Cantonese');
+    expect(instruction).toContain('Preserve English');
+    expect(instruction).toContain('Never output Japanese kana or Korean Hangul');
+    expect(instruction).not.toContain('Yue');
+  });
+
   it('should notify when Live setup is complete', () => {
     const mockOnSetupComplete = vi.fn();
     const client = new LiveClient({
@@ -126,11 +150,11 @@ describe('LiveClient WebSockets Integration Tests', () => {
     ws.readyState = 1;
     ws.onopen?.();
 
-    client.sendAudioChunk(new Int16Array([100]).buffer);
+    client.sendAudioChunk(new Int16Array(1600).buffer);
     expect(lastMockSend).toHaveBeenCalledTimes(1);
 
     ws.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) } as MessageEvent);
-    client.sendAudioChunk(new Int16Array([200]).buffer);
+    client.sendAudioChunk(new Int16Array(1600).buffer);
 
     expect(lastMockSend).toHaveBeenCalledTimes(3);
     const firstAudio = JSON.parse(lastMockSend.mock.calls[1][0]);
@@ -138,6 +162,33 @@ describe('LiveClient WebSockets Integration Tests', () => {
     expect(firstAudio.realtimeInput.audio.mimeType).toBe('audio/pcm;rate=16000');
     expect(secondAudio.realtimeInput.audio.mimeType).toBe('audio/pcm;rate=16000');
     expect(mockOnAudioSent).toHaveBeenCalledTimes(2);
+  });
+
+  it('should aggregate sub-100ms PCM chunks before sending audio frames', () => {
+    const client = new LiveClient({
+      token: 'test_token',
+      model: 'models/gemini-3.1-flash-live-preview',
+      onTranscription: mockOnTranscription,
+      onError: mockOnError,
+      onClose: mockOnClose,
+      onAudioSent: mockOnAudioSent,
+    });
+
+    client.connect();
+    const ws = wsInstances[0];
+    ws.readyState = 1;
+    ws.onopen?.();
+    ws.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) } as MessageEvent);
+
+    client.sendAudioChunk(new Int16Array(1599).buffer);
+    expect(lastMockSend).toHaveBeenCalledTimes(1);
+
+    client.sendAudioChunk(new Int16Array(1).buffer);
+
+    expect(lastMockSend).toHaveBeenCalledTimes(2);
+    const sentAudio = JSON.parse(lastMockSend.mock.calls[1][0]);
+    expect(sentAudio.realtimeInput.audio.mimeType).toBe('audio/pcm;rate=16000');
+    expect(mockOnAudioSent).toHaveBeenCalledTimes(1);
   });
 
   it('should keep only a bounded setup buffer before setupComplete', () => {
@@ -154,14 +205,14 @@ describe('LiveClient WebSockets Integration Tests', () => {
     ws.readyState = 1;
     ws.onopen?.();
 
-    for (let i = 0; i < 2100; i++) {
-      client.sendAudioChunk(new Int16Array([i]).buffer);
+    for (let i = 0; i < 70; i++) {
+      client.sendAudioChunk(new Int16Array(1600).buffer);
     }
     expect(lastMockSend).toHaveBeenCalledTimes(1);
 
     ws.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) } as MessageEvent);
 
-    expect(lastMockSend).toHaveBeenCalledTimes(2001);
+    expect(lastMockSend).toHaveBeenCalledTimes(61);
   });
 
   it('should defer audioStreamEnd until setupComplete if the user releases early', () => {
@@ -255,7 +306,7 @@ describe('LiveClient WebSockets Integration Tests', () => {
     ws.onopen?.();
     ws.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) } as MessageEvent);
 
-    const testPCMBuffer = new Int16Array([100, -100, 300, -300]).buffer;
+    const testPCMBuffer = new Int16Array(1600).buffer;
     client.sendAudioChunk(testPCMBuffer);
 
     expect(lastMockSend).toHaveBeenCalledTimes(2);
