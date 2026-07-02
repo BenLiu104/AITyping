@@ -161,6 +161,7 @@ System prompt（核心）：
 - `email` — 禮貌清楚，可直接寄
 - `todo` — 每項動詞開頭
 - `prompt` — 具體可直接餵 AI
+- `semantic` — 🚧 尚未定義（2026-07-02 起 feature branch `semantic-dev`）
 
 ## 10. 詳細開發步驟（Phase 1 對應 task）
 

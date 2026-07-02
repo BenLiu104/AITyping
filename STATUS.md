@@ -5,13 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 完成 — SenseVoice incremental WS v2 merged into `main`
-- **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages, `main` branch)
+- **Phase**: Phase 2 持續 — cleanup mode 擴充：加入「semantic」模式
+- **Branch**: `semantic-dev`（feature / cleanup mode extension）
+- **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
 - **Current deployed frontend build**: UI label `v01:35`
-- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)；`main` 不觸發 deploy
-- **Milestone**: `transcript-improve` merged into `main` ✅  — 包含 SenseVoice v2、Gemini Live WS、AudioWorklet、GH Actions CI/CD、全部 regression tests
+- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)；`semantic-dev` 不觸發 deploy
+- **Current work**: 新增 cleanup mode `"semantic"` — 定義其行為/prompt、後端 Literal type、前端 UI selector、PRD §9 文件
 
 ## 2. Current Product Behavior
 
@@ -40,16 +41,16 @@
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | ✅ Done | SenseVoice v2 真機效果滿意；branch merged into `main` |
+| Phase 2 UX polish | ⏳ In Progress | cleanup mode 擴充：加入「semantic」mode 🎯 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
 
 ```text
-2026-07-02 09:45 PDT — Merge transcript-improve → main
-- `transcript-improve` merged into `main` ✅  (0 conflicts, 16 files, 1257 insertions)
-- both branches pushed to origin ✅
-- Phase 2 SenseVoice v2 closed: merged into production main branch
+2026-07-02 10:04 PDT — Phase 2 持續：cleanup mode 擴充
+- `transcript-improve` 已 merge 入 `main`（SenseVoice v2 內容）
+- 新 branch `semantic-dev` 從 `main` 開出，準備加「semantic」cleanup mode
+- Phase 2 未關閉，繼續 cleanup UX polish
 ```
 
 ```text
@@ -111,11 +112,17 @@
 
 ## 6. Next Steps
 
-1. **暫停開發 / 保持觀察（目前狀態）**
-   - `v01:35` 已由 Ben 真機確認效果滿意；`transcript-improve` 已 merge 到 `main`，Phase 2 正式關閉。
-   - 若之後再次出現 transcript 漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` / `.jsonl` / `.wav` 對照 production trace。
+1. **`semantic` cleanup mode（🎯 當前任務）**
+   - 定義「semantic」mode 的行為 / prompt（待 Ben 確認）
+   - 後端：`Literal` + `mode_prompts` + test
+   - 前端：UI `<select>` option
+   - PRD §9 更新
 
-2. **Phase 3 — Stability & Security**
+2. **Phase 2 後續（SenseVoice v2 觀察中）**
+   - `v01:35` 真機效果滿意；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
+   - 舊 `/ws/transcribe` route 保留作回退
+
+3. **Phase 3 準備（⏭️ 之後）**
    - Rate limiting
    - Token endpoint access policy / auth
    - Better offline / mic denied / API failure UX
