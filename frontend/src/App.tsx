@@ -235,7 +235,7 @@ export default function App() {
       
       let cleanedResult = '';
       if (!mockMode) {
-        cleanedResult = await callCleanupAPI(textToClean);
+        cleanedResult = await runCleanupForCurrentMode(textToClean);
       } else {
         // Simulation Delay
         await new Promise((resolve) => setTimeout(resolve, 800));
@@ -293,6 +293,23 @@ export default function App() {
     const data = await res.json();
     return data.cleaned;
   };
+
+  const callSmartCleanupAPI = async (text: string): Promise<string> => {
+    const res = await fetch(`${API_BASE}/api/smart-cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: text,
+        languageMode: language,
+      })
+    });
+    if (!res.ok) throw new Error('Smart Cleanup API 呼叫失敗');
+    const data = await res.json();
+    return data.clean_text;
+  };
+
+  const runCleanupForCurrentMode = (text: string): Promise<string> =>
+    mode === 'semantic' ? callSmartCleanupAPI(text) : callCleanupAPI(text);
 
   // Real Audio Pipeline Setup (iOS Safari Compliant)
   const startRealRecording = async () => {
@@ -523,7 +540,7 @@ export default function App() {
     triggerVibe(50);
 
     try {
-      const cleanedResult = await callCleanupAPI(finalText);
+      const cleanedResult = await runCleanupForCurrentMode(finalText);
       setCleanedText(cleanedResult);
     } catch (err: any) {
       setErrorMsg(err.message || '整理失敗，請再試一次');
@@ -634,6 +651,7 @@ export default function App() {
                   <option value="email">✉️ 專業電郵 (Email)</option>
                   <option value="todo">📋 待辦事項 (TODO)</option>
                   <option value="prompt">🤖 提示工程 (Prompt)</option>
+                  <option value="semantic">🧠 語義整理 (Smart Cleanup)</option>
                 </select>
                 <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-[#8e8e93] pointer-events-none" />
               </div>

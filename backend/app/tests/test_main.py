@@ -98,3 +98,46 @@ def test_debug_event_rejects_transcript_field():
     }
     response = client.post("/api/debug-event", json=payload)
     assert response.status_code == 422
+
+
+def test_smart_cleanup_route_mock():
+    from app.routes.smart_cleanup import get_gemini_adapter as smart_cleanup_adapter
+
+    app.dependency_overrides[smart_cleanup_adapter] = get_mock_gemini_adapter
+
+    payload = {
+        "transcript": "我今晚想食菜心，um，都係唔好，今日生菜比較靚。但生菜好貴，都係菜心性價比高啲。",
+        "languageMode": "yue",
+    }
+    response = client.post("/api/smart-cleanup", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "Mock Smart Cleanup (yue)" in data["clean_text"]
+    assert data["intent_status"] == "decided"
+    assert "confidence" in data
+
+    app.dependency_overrides.clear()
+
+
+def test_smart_cleanup_route_validation_rejects_empty_transcript():
+    from app.routes.smart_cleanup import get_gemini_adapter as smart_cleanup_adapter
+
+    app.dependency_overrides[smart_cleanup_adapter] = get_mock_gemini_adapter
+
+    payload = {"transcript": "", "languageMode": "mixed"}
+    response = client.post("/api/smart-cleanup", json=payload)
+    assert response.status_code == 422
+
+    app.dependency_overrides.clear()
+
+
+def test_smart_cleanup_route_validation_requires_transcript_field():
+    from app.routes.smart_cleanup import get_gemini_adapter as smart_cleanup_adapter
+
+    app.dependency_overrides[smart_cleanup_adapter] = get_mock_gemini_adapter
+
+    payload = {"languageMode": "mixed"}
+    response = client.post("/api/smart-cleanup", json=payload)
+    assert response.status_code == 422
+
+    app.dependency_overrides.clear()

@@ -5,21 +5,26 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 持續 — cleanup mode 擴充：加入「semantic」模式
+- **Phase**: Phase 2 持續 — cleanup mode 擴充：`semantic` mode MVP1 (Smart Cleanup) 已完成
 - **Branch**: `semantic-dev`（feature / cleanup mode extension）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v01:35`
+- **Current deployed frontend build**: UI label `v01:35`（Smart Cleanup 改動尚未 deploy，仍在 `semantic-dev` 本地工作樹）
 - **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)；`semantic-dev` 不觸發 deploy
-- **Current work**: 新增 cleanup mode `"semantic"` — 定義其行為/prompt、後端 Literal type、前端 UI selector、PRD §9 文件
+- **Current work**: `semantic` cleanup mode MVP1 已實作完成——`POST /api/smart-cleanup` 獨立 endpoint + 前端 mode dropdown 分支呼叫，結果寫入現有 cleanup 輸出欄位。下一步：real API 手動驗收（非 mock）+ 視需要 merge 回 main。
 
 ## 2. Current Product Behavior
 
 - Mic 係 **tap-to-toggle**：
   1. 每個 page session 第一次點 Mic：只做 mic permission priming，不錄音。
   2. 第二次點 Mic：開始錄音。
-  3. 再點一次 Mic：停止錄音，flush audio，等所有 SenseVoice / Gemini transcript 完成，然後呼叫 `/api/cleanup`。
+  3. 再點一次 Mic：停止錄音，flush audio，等所有 SenseVoice / Gemini transcript 完成，然後根據 `mode` 呼叫 `/api/cleanup`（4 種標準模式）或 `/api/smart-cleanup`（`semantic` mode）。
+- **Cleanup mode routing（本地工作樹）**：
+  - `message` / `email` / `todo` / `prompt` → `POST /api/cleanup`，回傳 `{ cleaned, mode }`，寫入既有 cleanup 欄位。
+  - `semantic` → `POST /api/smart-cleanup`，回傳 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只取 `clean_text` 寫入同一個 cleanup 欄位（其餘 metadata MVP1 不顯示，留 debug/未來用）。兩個 endpoint 互斥，不會並行呼叫。
+  - Smart Cleanup 只喺 stop 後、final transcript 非空時觸發一次；interim transcript 不觸發；空 transcript 不觸發（沿用既有「stop 後才呼叫 cleanup」時序，免費繼承這條 acceptance criteria）。
+  - Smart Cleanup 失敗時不影響 raw transcript：錯誤訊息走既有 `errorMsg` state 顯示，cleanup 輸出欄位維持空白，不 crash。
 - **Language routing（本地工作樹）**：
   - `en` / `zh-Hant` → Gemini Live WebSocket API（`aityping.bochibb.qzz.io/api/live-token`）
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2`）
@@ -36,15 +41,28 @@
 | Area | Status | Notes |
 |---|---:|---|
 | Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA 基本流程跑通 |
-| Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
-| Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic |
+| Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
+| Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
+| Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 手動驗收待做 |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | ⏳ In Progress | cleanup mode 擴充：加入「semantic」mode 🎯 |
+| Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成；後續 real API 驗收 + 其餘 Phase 2 gates（history、debug counters 顯示規則等） |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-04 18:03 PDT — Smart Cleanup (semantic mode) MVP1 implemented
+- backend: pytest 18/18 ✅（含 6 條新 smart_cleanup adapter test + 3 條新 route test）
+- backend: ruff check . ✅, ruff format . --check ✅
+- frontend: npm run test 40/40 ✅（含 5 條新 Smart Cleanup describe block test：觸發時機、interim 不觸發、空 transcript 不觸發、成功顯示、失敗不影響 raw transcript）
+- frontend: npm run typecheck ✅
+- frontend: npm run build ✅
+- frontend: npm run lint (oxlint) ✅
+- dist/ bundle grep GEMINI_API_KEY → 無命中 ✅
+- 未驗證：real（非 mock）Gemini API 呼叫、iPhone Safari 真機測試 — 下一步待辦
+```
 
 ```text
 2026-07-02 10:04 PDT — Phase 2 持續：cleanup mode 擴充
@@ -112,11 +130,10 @@
 
 ## 6. Next Steps
 
-1. **`semantic` cleanup mode（🎯 當前任務）**
-   - 定義「semantic」mode 的行為 / prompt（待 Ben 確認）
-   - 後端：`Literal` + `mode_prompts` + test
-   - 前端：UI `<select>` option
-   - PRD §9 更新
+1. **Smart Cleanup (semantic mode) real API 驗收（🎯 當前任務）**
+   - 用真 `GEMINI_API_KEY`（非 mock）實測 `/api/smart-cleanup`，確認 `response_schema` 約束在真實 Gemini 呼叫下的輸出品質
+   - iPhone Safari 真機測試：揀 semantic mode → stop 錄音 → 確認 loading/結果/失敗三態 UX
+   - 視 Ben 確認後決定 merge `semantic-dev` → `main`
 
 2. **Phase 2 後續（SenseVoice v2 觀察中）**
    - `v01:35` 真機效果滿意；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
