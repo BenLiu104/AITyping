@@ -6,8 +6,15 @@
 
 ## [Unreleased]
 
+### Added
+- `POST /api/smart-cleanup`：`semantic` cleanup mode MVP1（Smart Cleanup）— 對停止錄音後嘅完整最終逐字稿做語義層整理，推斷用戶最終真正想講嘅意思（處理猶豫、自我修正、改變主意），非純文法修正。回應 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只顯示 `clean_text`，寫入既有 cleanup 輸出欄位。
+- `GeminiAdapter.smart_cleanup()`：用 `response_mime_type: application/json` + `response_schema` 約束 Gemini 輸出；解析失敗時 regex 搶救 `clean_text`，完全無法搶救才拋錯。
+
 ### Changed
-- `transcript-improve` branch merged into `main`（Phase 2 SenseVoice v2 正式關閉。GitHub Pages frontend 仍由 `transcript-improve` push 觸發 deploy）。
+- `Mode` type 新增 `'semantic'` 選項；前端 mode dropdown 加對應 UI option。
+- 前端 stop-recording flow（`stopRealRecording` / `stopMockRecording`）改用 `runCleanupForCurrentMode()` 分支：`semantic` mode 打 `/api/smart-cleanup`，其餘 4 種 mode 維持打 `/api/cleanup`（不變）；兩者互斥，不並行呼叫。
+- `transcript-improve` branch merged into `main`（SenseVoice v2 內容合併回主線）。
+- Phase 2 持續進行：新增 `semantic-dev` branch 擴充 cleanup modes。
 
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。

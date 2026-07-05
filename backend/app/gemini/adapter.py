@@ -1,3 +1,5 @@
+import json
+import re
 from typing import Optional
 from google import genai
 from google.genai import types
@@ -10,6 +12,14 @@ class GeminiAdapter:
 
     將 Live API 模型、Cleanup 模型集中化，並處理 Mock 模式的切換。
     """
+
+    SMART_CLEANUP_INTENT_STATUSES = {
+        "decided",
+        "leaning",
+        "comparing",
+        "uncertain",
+        "note",
+    }
 
     def __init__(self, api_key: Optional[str] = None, mock_mode: Optional[bool] = None):
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_MODE
@@ -168,3 +178,153 @@ class GeminiAdapter:
 
         except APIError as e:
             raise RuntimeError(f"Gemini API 整理文字失敗: {e}")
+
+    async def smart_cleanup(
+        self, transcript: str, language_mode: str = "mixed"
+    ) -> dict:
+        """MVP1 Smart Cleanup：對「最終逐字稿」做語義層整理，推斷用戶最終真正想講嘅意思
+
+        只喺 stop 錄音、final transcript 已經齊全之後先呼叫一次；唔處理 interim transcript。
+        - transcript: 完整最終逐字稿（raw，未經 /api/cleanup 處理）
+        - language_mode: yue (粵語), mixed (中英混合), en (英文), zh-Hant (繁體中文)
+
+        回傳 dict：{ clean_text, intent_status, reasoning_summary, confidence }
+        """
+        if self.mock_mode:
+            return {
+                "clean_text": f"[Mock Smart Cleanup ({language_mode})]: {transcript.strip()}",
+                "intent_status": "decided",
+                "reasoning_summary": "Mock 模式：未實際呼叫 Gemini，直接回傳原文包裝結果。",
+                "confidence": 0.5,
+            }
+
+        if not transcript.strip():
+            # 與 cleanup_transcript 對齊：空白輸入靜默回傳空結果，不呼叫模型。
+            return {
+                "clean_text": "",
+                "intent_status": "note",
+                "reasoning_summary": "",
+                "confidence": 0.0,
+            }
+
+        if self.client is None:
+            raise ValueError("Client 未初始化，無法呼叫 API。")
+
+        system_instruction = (
+            "You are a semantic cleanup engine for live speech transcripts.\n\n"
+            "Your job is to infer the user's current intended meaning from the full final transcript.\n\n"
+            "The transcript may contain:\n"
+            "- hesitations\n"
+            "- filler words\n"
+            "- repeated words\n"
+            "- self-corrections\n"
+            "- abandoned ideas\n"
+            "- changed decisions\n"
+            "- mixed Cantonese, Chinese, and English\n"
+            "- imperfect speech-to-text errors\n\n"
+            "Do not simply correct grammar.\n"
+            "Do not preserve abandoned thoughts unless they are needed to explain the final meaning.\n"
+            "Do not invent facts that are not supported by the transcript.\n"
+            "If the user clearly changes their mind, follow the latest decision.\n"
+            "If the user is still undecided, preserve that uncertainty.\n"
+            "Output concise, natural Traditional Chinese by default unless the transcript is clearly English.\n"
+            "Return JSON only."
+        )
+
+        user_content = (
+            f'languageMode: {language_mode}\n\n完整最終逐字稿：\n"""\n{transcript}\n"""'
+        )
+
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "clean_text": {"type": "string"},
+                "intent_status": {
+                    "type": "string",
+                    "enum": sorted(self.SMART_CLEANUP_INTENT_STATUSES),
+                },
+                "reasoning_summary": {"type": "string"},
+                "confidence": {"type": "number"},
+            },
+            "required": [
+                "clean_text",
+                "intent_status",
+                "reasoning_summary",
+                "confidence",
+            ],
+        }
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.get_cleanup_model_name(),
+                contents=user_content,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                ),
+            )
+
+            raw_result = response.text
+            if not raw_result or not raw_result.strip():
+                raise RuntimeError("Gemini 回傳空白內容，無法解析 Smart Cleanup 結果。")
+
+            return self._parse_smart_cleanup_response(raw_result)
+
+        except APIError as e:
+            raise RuntimeError(f"Gemini API Smart Cleanup 呼叫失敗: {e}")
+
+    def _parse_smart_cleanup_response(self, raw_result: str) -> dict:
+        """解析 Gemini 回傳嘅 Smart Cleanup JSON；解析失敗時嘗試搶救 clean_text。"""
+        text = raw_result.strip()
+        # 防範模型頑固地返回 ``` 包裹（與 cleanup_transcript 對齊的處理方式）
+        if text.startswith("```") and text.endswith("```"):
+            lines = text.split("\n")
+            if len(lines) >= 3:
+                text = "\n".join(lines[1:-1]).strip()
+
+        try:
+            data = json.loads(text)
+            clean_text = str(data.get("clean_text", "")).strip()
+            if not clean_text:
+                raise ValueError("Smart Cleanup JSON 缺少 clean_text。")
+
+            intent_status = data.get("intent_status", "note")
+            if intent_status not in self.SMART_CLEANUP_INTENT_STATUSES:
+                intent_status = "note"
+
+            reasoning_summary = str(data.get("reasoning_summary") or "")
+
+            try:
+                confidence = float(data.get("confidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+
+            return {
+                "clean_text": clean_text,
+                "intent_status": intent_status,
+                "reasoning_summary": reasoning_summary,
+                "confidence": confidence,
+            }
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # JSON 解析失敗或缺 clean_text：嘗試搶救 clean_text（PRD 要求：try to recover if possible）
+        match = re.search(r'"clean_text"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+        if match:
+            try:
+                recovered = json.loads(f'"{match.group(1)}"')
+            except json.JSONDecodeError:
+                recovered = match.group(1)
+            if recovered.strip():
+                return {
+                    "clean_text": recovered.strip(),
+                    "intent_status": "note",
+                    "reasoning_summary": "",
+                    "confidence": 0.0,
+                }
+
+        raise RuntimeError(
+            "Smart Cleanup 回傳內容無法解析為 JSON，且無法搶救 clean_text。"
+        )

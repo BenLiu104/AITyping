@@ -103,6 +103,32 @@ iPhone Safari (PWA)
 ```
 - 缺 `rawTranscript` → `422`。
 - model：`gemini-3.1-flash-lite`。
+- `mode` 不含 `semantic`——選 `semantic` 時前端改打 §6.3 `/api/smart-cleanup`，不經此 endpoint。
+
+> 改合約 = 同步更新這裡 + 前後端 + test。
+
+### 6.3 `POST /api/smart-cleanup`（MVP1，semantic mode 專用）
+**Request:**
+```json
+{
+  "transcript": "string",
+  "languageMode": "zh-Hant | en | mixed | yue"
+}
+```
+**Response 200:**
+```json
+{
+  "clean_text": "string",
+  "intent_status": "decided | leaning | comparing | uncertain | note",
+  "reasoning_summary": "string",
+  "confidence": 0.91
+}
+```
+- 缺 `transcript` 或空字串 → `422`（`min_length=1`）。
+- model：`gemini-3.1-flash-lite`，`response_mime_type: application/json` + `response_schema` 約束輸出；解析失敗時 code 端嘗試用 regex 搶救 `clean_text`，完全無法搶救才 `500`。
+- 前端只顯示 `clean_text`（寫入現有 cleanup 輸出欄位）；`intent_status` / `reasoning_summary` / `confidence` 保留供 debug / 未來使用，MVP1 UI 不顯示。
+- 觸發時機：只喺 stop 錄音、final transcript 非空之後呼叫一次；不處理 interim transcript，不在錄音中呼叫。
+- 與 `/api/cleanup` 分離的原因：語義推斷輸出結構（帶 metadata）與純文字整理輸出（string）合約不同；且兩者互斥（`mode` 只能擇一），非並行呼叫。
 
 > 改合約 = 同步更新這裡 + 前後端 + test。
 
@@ -161,6 +187,30 @@ System prompt（核心）：
 - `email` — 禮貌清楚，可直接寄
 - `todo` — 每項動詞開頭
 - `prompt` — 具體可直接餵 AI
+- `semantic` — ✅ MVP1 已實作（2026-07-04）：不用上面呢個共用 system prompt，改用獨立 Smart Cleanup prompt + `/api/smart-cleanup` endpoint（見 §6.3）。目的唔係文法修正，而係從完整最終逐字稿推斷用戶最終真正想講嘅意思（處理猶豫、自我修正、改變主意）。Smart Cleanup 專屬 prompt：
+```
+You are a semantic cleanup engine for live speech transcripts.
+
+Your job is to infer the user's current intended meaning from the full final transcript.
+
+The transcript may contain:
+- hesitations
+- filler words
+- repeated words
+- self-corrections
+- abandoned ideas
+- changed decisions
+- mixed Cantonese, Chinese, and English
+- imperfect speech-to-text errors
+
+Do not simply correct grammar.
+Do not preserve abandoned thoughts unless they are needed to explain the final meaning.
+Do not invent facts that are not supported by the transcript.
+If the user clearly changes their mind, follow the latest decision.
+If the user is still undecided, preserve that uncertainty.
+Output concise, natural Traditional Chinese by default unless the transcript is clearly English.
+Return JSON only.
+```
 
 ## 10. 詳細開發步驟（Phase 1 對應 task）
 

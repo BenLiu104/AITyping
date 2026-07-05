@@ -736,3 +736,213 @@ describe('App Component Core UI Tests', () => {
     expect(textarea.value).toBeTruthy()
   })
 })
+
+describe('Smart Cleanup (semantic mode) — MVP1', () => {
+  const selectSemanticMode = () => {
+    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
+    const modeSelect = screen.getByDisplayValue(/訊息聊天/i)
+    fireEvent.change(modeSelect, { target: { value: 'semantic' } })
+  }
+
+  it('calls /api/smart-cleanup (not /api/cleanup) only after stop, with the final transcript', async () => {
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          clean_text: '今晚因性價比關係會食菜心。',
+          intent_status: 'decided',
+          reasoning_summary: '使用者從生菜改回菜心。',
+          confidence: 0.91,
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    selectSemanticMode()
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    // While still recording: interim transcript arrives, must NOT call smart-cleanup yet.
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('我今晚想食菜心', false)
+      await flushPromises()
+    })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/smart-cleanup', expect.anything())
+
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription(
+        '我今晚想食菜心，都係唔好，都係菜心性價比高啲。',
+        true,
+      )
+      await flushPromises()
+    })
+    // Final transcript arriving mid-recording must still not trigger smart-cleanup.
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/smart-cleanup', expect.anything())
+
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // stop
+      await flushPromises()
+    })
+
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/smart-cleanup', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('都係菜心性價比高啲'),
+    }))
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/cleanup', expect.anything())
+
+    const lastCallBody = JSON.parse(
+      fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1].body as string,
+    )
+    expect(lastCallBody.languageMode).toBe('mixed')
+
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('今晚因性價比關係會食菜心。')
+  })
+
+  it('does not call smart-cleanup when the final transcript is empty', async () => {
+    vi.useFakeTimers()
+    window.localStorage.setItem('aityping:mic-permission-primed', 'true')
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    selectSemanticMode()
+
+    // Switch to English so LiveClient (not SenseVoice) is used, matching the
+    // existing "no transcript" regression test's setup.
+    const languageSelect = screen.getByDisplayValue(/中英混合/i)
+    fireEvent.change(languageSelect, { target: { value: 'en' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    await act(async () => {
+      liveClientMockState.latestClient.emitSetupComplete()
+    })
+
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // stop, no transcription ever arrived
+      await vi.advanceTimersByTimeAsync(4500)
+      await flushPromises()
+    })
+
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/smart-cleanup', expect.anything())
+    expect(screen.getByText(/未收到聽寫文字/i)).toBeInTheDocument()
+
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('')
+  })
+
+  it('shows the cleaned semantic result on success', async () => {
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          clean_text: '明天會議時間定為十點半，因為需要先送小朋友返學。',
+          intent_status: 'decided',
+          reasoning_summary: '用戶將十點改為十點半。',
+          confidence: 0.88,
+        }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    selectSemanticMode()
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription(
+        '我聽日想十點開會，唔係，十點半先啱。',
+        true,
+      )
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // stop
+      await flushPromises()
+    })
+
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('明天會議時間定為十點半，因為需要先送小朋友返學。')
+    expect(screen.queryByText(/整理失敗/i)).not.toBeInTheDocument()
+  })
+
+  it('on smart-cleanup failure, keeps the raw transcript intact and shows a non-blocking error', async () => {
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    selectSemanticMode()
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('原始逐字稿內容', true)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // stop
+      await flushPromises()
+    })
+
+    // Raw transcript must remain visible and unchanged.
+    expect(screen.getByText('原始逐字稿內容')).toBeInTheDocument()
+    // Non-blocking error shown; cleaned-result textarea stays empty, not crashed.
+    expect(screen.getByText(/Smart Cleanup API 呼叫失敗/i)).toBeInTheDocument()
+    const textarea = screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement
+    expect(textarea.value).toBe('')
+  })
+})
