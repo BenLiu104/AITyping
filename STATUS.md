@@ -5,14 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 持續 — cleanup mode 擴充：`semantic` mode MVP1 (Smart Cleanup) 已完成
-- **Branch**: `semantic-dev`（feature / cleanup mode extension）
+- **Phase**: Phase 2 — Smart Cleanup (semantic mode) MVP1 已完成並 merge 入 `main`
+- **Branch**: `main`（`semantic-dev` 已 merge，工作完成）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v01:35`（Smart Cleanup 改動尚未 deploy，仍在 `semantic-dev` 本地工作樹）
-- **GitHub Actions**: Auto-deploy frontend on push to `transcript-improve` branch (path: `frontend/**`)；`semantic-dev` 不觸發 deploy
-- **Current work**: `semantic` cleanup mode MVP1 已實作完成——`POST /api/smart-cleanup` 獨立 endpoint + 前端 mode dropdown 分支呼叫，結果寫入現有 cleanup 輸出欄位。下一步：real API 手動驗收（非 mock）+ 視需要 merge 回 main。
+- **Current deployed frontend build**: UI label `v01:35`（含 Smart Cleanup；已 deploy 並經 Ben 真機確認「效果還可以」）
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` branch (path: `frontend/**`)
+- **Current work**: Smart Cleanup (semantic mode) MVP1 已完成、真機驗收通過、merge 入 `main`（commit `4095b44`）。下一步：新開 `uixi` branch 進行 UI 改版。
 
 ## 2. Current Product Behavior
 
@@ -45,9 +45,9 @@
 | Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
-| Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 手動驗收待做 |
+| Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成；後續 real API 驗收 + 其餘 Phase 2 gates（history、debug counters 顯示規則等） |
+| Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；下一步 UI 改版（`uixi` branch）+ 其餘 Phase 2 gates（history、debug counters 顯示規則等） |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
@@ -127,16 +127,17 @@
 - **Do not re-add Docker cloudflared connector**：Tunnel 用 host systemd `cloudflared.service`。
 - **Do not use MediaRecorder**：Live API 依賴 AudioWorklet raw PCM。
 - **Do not parse WS messages as string-only**：Browser 可能交付 Blob；需 normalize 後再 JSON.parse。
+- **GitHub Pages deploy 有兩層 branch 限制，唔係改 workflow YAML 就夠**：`deploy-frontend.yml` 嘅 `on.push.branches` 淨係控制邊個 branch 觸發 workflow；GitHub repo Settings → Environments → `github-pages` 仲有獨立嘅 deployment branch policy（`gh api repos/BenLiu104/AITyping/environments/github-pages/deployment-branch-policies` 查），呢層淨係允許已列入白名單嘅 branch 真正 deploy，唔喺白名單會 workflow 綠燈但 deploy step 2 秒內以 `environment protection rules` 拒絕。切 deploy trigger branch 時兩層都要對齊。
 
 ## 6. Next Steps
 
-1. **Smart Cleanup (semantic mode) real API 驗收（🎯 當前任務）**
-   - 用真 `GEMINI_API_KEY`（非 mock）實測 `/api/smart-cleanup`，確認 `response_schema` 約束在真實 Gemini 呼叫下的輸出品質
-   - iPhone Safari 真機測試：揀 semantic mode → stop 錄音 → 確認 loading/結果/失敗三態 UX
-   - 視 Ben 確認後決定 merge `semantic-dev` → `main`
+1. **UI 改版（🎯 下一步，準備開 `uixi` branch）**
+   - 範圍待 Ben 下一步指示
+   - 開工前記得：若改動涉及 `frontend/**` 且要真機驗收，`deploy-frontend.yml` trigger branch 現指向 `semantic-dev`，`uixi` 上 push 不會自動 deploy——需要時比照上次流程，同步更新 workflow trigger branch + environment deployment-branch-policy（見 §5 pitfalls），或用 `gh workflow run --ref uixi` 手動觸發（但仍受 environment policy 限制）
 
-2. **Phase 2 後續（SenseVoice v2 觀察中）**
-   - `v01:35` 真機效果滿意；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
+2. **Phase 2 收尾觀察**
+   - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt
+   - SenseVoice v2（`v01:35`）持續觀察中；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
    - 舊 `/ws/transcribe` route 保留作回退
 
 3. **Phase 3 準備（⏭️ 之後）**

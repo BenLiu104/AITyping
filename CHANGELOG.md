@@ -13,8 +13,10 @@
 ### Changed
 - `Mode` type 新增 `'semantic'` 選項；前端 mode dropdown 加對應 UI option。
 - 前端 stop-recording flow（`stopRealRecording` / `stopMockRecording`）改用 `runCleanupForCurrentMode()` 分支：`semantic` mode 打 `/api/smart-cleanup`，其餘 4 種 mode 維持打 `/api/cleanup`（不變）；兩者互斥，不並行呼叫。
+- `deploy-frontend.yml` deploy trigger branch：`transcript-improve` → `semantic-dev`；同步更新 GitHub repo `github-pages` environment 的 deployment-branch-policy 白名單（移除 `transcript-improve`，加入 `semantic-dev`）。
 - `transcript-improve` branch merged into `main`（SenseVoice v2 內容合併回主線）。
-- Phase 2 持續進行：新增 `semantic-dev` branch 擴充 cleanup modes。
+- `semantic-dev` branch merged into `main`（Smart Cleanup MVP1，real API 真機驗收通過後合併）。
+- Phase 2 持續進行：新增 `uixi` branch 準備 UI 改版。
 
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。
