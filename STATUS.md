@@ -5,14 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — Smart Cleanup (semantic mode) MVP1 已完成並 merge 入 `main`
-- **Branch**: `main`（`semantic-dev` 已 merge，工作完成）
+- **Phase**: Phase 2 — Smart Cleanup MVP1 已完成並 merge 入 `main`；現正進行 UI 改版（`uixi` branch）
+- **Branch**: `uixi`（從 `main` 開出，進行「柔和生活風」主畫面 UI 改版）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v01:35`（含 Smart Cleanup；已 deploy 並經 Ben 真機確認「效果還可以」）
-- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` branch (path: `frontend/**`)
-- **Current work**: Smart Cleanup (semantic mode) MVP1 已完成、真機驗收通過、merge 入 `main`（commit `4095b44`）。下一步：新開 `uixi` branch 進行 UI 改版。
+- **Current deployed frontend build**: UI label `v01:35`（含 Smart Cleanup；已 deploy 並經 Ben 真機確認「效果還可以」）— 注意：`uixi` 的 UI 改版**尚未 deploy**，線上仍是舊 dark UI
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` branch (path: `frontend/**`)；`uixi` push **不會**自動 deploy
+- **Current work**: 「柔和生活風」主畫面 UI 改版已在本地完成（layout-only，logic 全數保留），tests / typecheck / build 全綠。**未 deploy、未真機驗收**（本 session 無 iPhone）。下一步：Ben review UI + 真機驗收前，同步 deploy trigger branch / environment policy。
 
 ## 2. Current Product Behavior
 
@@ -35,6 +35,7 @@
 - SenseVoice WS client 現在把 iPhone AudioWorklet 的極細 PCM frames 聚合成約 100ms / 3200 bytes 才送出，停止時會先 flush 剩餘 audio 再送 `END`，debug row 顯示 `end` / `ack` 用嚟確認 backend finalize handshake。
 - **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `bochibb.qzz.io` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
 - 舊 `/ws/transcribe` silence-segmentation route 仍保留，方便回退；但本地新路徑已改用 `/ws/transcribe-v2`。
+- **主畫面 UI（`uixi` 本地工作樹，未 deploy）**：改為「柔和生活風」— 暖米白背景、綠色 accent、白色圓角卡片。整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐（native `<select>`，`aria-label` = 整理模式 / 語言模式）；預設整理模式改為 `semantic`（智能整理）。Settings gear 只剩 mock + haptics 兩個 toggle。即時聽寫卡加錄音計時器（`mm:ss`）；智能整理結果卡的複製 / 清除為卡內右上角小 icon。底部：中央綠色 mic 大按鈕（唯一 tap-to-toggle 錄音控制）+ 右側「歷史紀錄」按鈕（點擊只彈「歷史紀錄即將推出」placeholder，無儲存邏輯）。debug 遙測列改為只在 `import.meta.env.DEV` 顯示（`vite build` production bundle 已剝除，Vitest 下仍在故 `end=1 ack=1` regression 續綠）。所有錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 
 ## 3. Area Status
 
@@ -47,10 +48,20 @@
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
 | Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
-| Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；下一步 UI 改版（`uixi` branch）+ 其餘 Phase 2 gates（history、debug counters 顯示規則等） |
+| Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；「柔和生活風」主畫面 UI 改版本地完成（layout-only，tests/typecheck/build 全綠，未 deploy / 未真機驗收）；其餘 Phase 2 gates（history 真實功能、debug counters 顯示規則等）待續 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-06 12:14 PDT — 「柔和生活風」主畫面 UI 改版（uixi，layout-only）
+- frontend: npx vitest run 43/43 ✅（40 原有 + 3 新增：預設 semantic mode、兩個 selector 常駐、歷史紀錄 placeholder 開關）
+- frontend: npx tsc --noEmit ✅
+- frontend: npm run build ✅（tsc -b + vite build，44 modules，PWA precache 6 entries）
+- 改動檔案：App.tsx（JSX 重寫 + 預設 mode=semantic + 計時器/placeholder additive state）、index.css（暖色 tokens）、vite.config.ts（PWA theme/bg color）、test/app.test.tsx（6 個既有 test 的 setup 適配 + 3 個新 test，斷言意圖不變）
+- ad-hoc 驗證：production bundle grep 確認 debug 遙測列（`bytes=` / `setup=` / 字面 `debug `）0 命中 → DEV-gate 剝除成功；主畫面字串（整理模式/語言模式/即時聽寫/智能整理結果/歷史紀錄）皆在 bundle 內 ✅
+- 未驗證：iPhone Safari 真機（本 session 無裝置）、未 deploy（uixi push 不自動觸發 GH Pages）— 下一步待辦
+```
 
 ```text
 2026-07-04 18:03 PDT — Smart Cleanup (semantic mode) MVP1 implemented
@@ -131,9 +142,11 @@
 
 ## 6. Next Steps
 
-1. **UI 改版（🎯 下一步，準備開 `uixi` branch）**
-   - 範圍待 Ben 下一步指示
-   - 開工前記得：若改動涉及 `frontend/**` 且要真機驗收，`deploy-frontend.yml` trigger branch 現指向 `semantic-dev`，`uixi` 上 push 不會自動 deploy——需要時比照上次流程，同步更新 workflow trigger branch + environment deployment-branch-policy（見 §5 pitfalls），或用 `gh workflow run --ref uixi` 手動觸發（但仍受 environment policy 限制）
+1. **UI 改版（🎯 本地完成，待 review + deploy）**
+   - 「柔和生活風」主畫面已在 `uixi` 本地完成（layout-only，tests/typecheck/build 全綠）；plan 見 `UI_change.md`
+   - 待辦：Ben review 視覺 + iPhone Safari 真機驗收
+   - Deploy 前記得：`deploy-frontend.yml` trigger branch 現指向 `semantic-dev`，`uixi` 上 push 不會自動 deploy——需要時比照上次流程，同步更新 workflow trigger branch + environment deployment-branch-policy（見 §5 pitfalls），或用 `gh workflow run --ref uixi` 手動觸發（但仍受 environment policy 限制）
+   - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
 2. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt

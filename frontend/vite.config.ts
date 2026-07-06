@@ -16,8 +16,8 @@ export default defineConfig({
         name: 'AITyping',
         short_name: 'AITyping',
         description: 'iPhone-first PWA 智能語音輸入草稿板',
-        theme_color: '#1a1a1a',
-        background_color: '#1a1a1a',
+        theme_color: '#FFF9EF',
+        background_color: '#FFF9EF',
         display: 'standalone',
         orientation: 'portrait',
         icons: [

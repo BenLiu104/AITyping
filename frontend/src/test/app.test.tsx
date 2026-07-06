@@ -329,6 +329,8 @@ describe('App Component Core UI Tests', () => {
     fireEvent.click(screen.getByRole('button', { name: /設定/i }))
     const languageSelect = screen.getByDisplayValue(/中英混合/i)
     fireEvent.change(languageSelect, { target: { value: 'en' } })
+    // Default mode is now 'semantic'; select 'message' to exercise /api/cleanup.
+    fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -390,6 +392,8 @@ describe('App Component Core UI Tests', () => {
     fireEvent.click(screen.getByRole('button', { name: /設定/i }))
     const languageSelect = screen.getByDisplayValue(/中英混合/i)
     fireEvent.change(languageSelect, { target: { value: 'en' } })
+    // Default mode is now 'semantic'; select 'message' to exercise /api/cleanup.
+    fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -457,6 +461,8 @@ describe('App Component Core UI Tests', () => {
     fireEvent.click(screen.getByRole('button', { name: /設定/i }))
     const languageSelect = screen.getByDisplayValue(/中英混合/i)
     fireEvent.change(languageSelect, { target: { value: 'en' } })
+    // Default mode is now 'semantic'; select 'message' to exercise /api/cleanup.
+    fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -601,6 +607,8 @@ describe('App Component Core UI Tests', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
+    // Default mode is now 'semantic'; select 'message' to exercise /api/cleanup.
+    fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
 
     const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
     await act(async () => {
@@ -676,13 +684,16 @@ describe('App Component Core UI Tests', () => {
     const settingsButton = screen.getByRole('button', { name: /設定/i })
     expect(settingsButton).toBeInTheDocument()
 
-    expect(screen.queryByText(/整理模式/i)).not.toBeInTheDocument()
+    // Mode/language selectors now live on the main screen (always visible);
+    // the settings drawer holds mock + haptics only. Assert on a drawer-only
+    // string to verify the open/close toggle still works.
+    expect(screen.queryByText('沙盒/模擬模式')).not.toBeInTheDocument()
 
     fireEvent.click(settingsButton)
-    expect(screen.getByText(/整理模式/i)).toBeInTheDocument()
+    expect(screen.getByText('沙盒/模擬模式')).toBeInTheDocument()
 
     fireEvent.click(settingsButton)
-    expect(screen.queryByText(/整理模式/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('沙盒/模擬模式')).not.toBeInTheDocument()
   })
 
   it('lets the settings checkboxes toggle options', async () => {
@@ -739,8 +750,7 @@ describe('App Component Core UI Tests', () => {
 
 describe('Smart Cleanup (semantic mode) — MVP1', () => {
   const selectSemanticMode = () => {
-    fireEvent.click(screen.getByRole('button', { name: /設定/i }))
-    const modeSelect = screen.getByDisplayValue(/訊息聊天/i)
+    const modeSelect = screen.getByLabelText('整理模式')
     fireEvent.change(modeSelect, { target: { value: 'semantic' } })
   }
 
@@ -946,3 +956,29 @@ describe('Smart Cleanup (semantic mode) — MVP1', () => {
     expect(textarea.value).toBe('')
   })
 })
+
+describe('柔和生活風 UI — front-page selectors & history placeholder', () => {
+  it('defaults the 整理模式 selector to 智能整理 (semantic) on the main screen', () => {
+    render(<App />)
+    const modeSelect = screen.getByLabelText('整理模式') as HTMLSelectElement
+    expect(modeSelect.value).toBe('semantic')
+  })
+
+  it('shows both selectors on the main screen without opening settings', () => {
+    render(<App />)
+    expect(screen.getByLabelText('整理模式')).toBeInTheDocument()
+    expect(screen.getByLabelText('語言模式')).toBeInTheDocument()
+  })
+
+  it('opens a "歷史紀錄即將推出" placeholder when the history button is tapped, and dismisses it', () => {
+    render(<App />)
+    expect(screen.queryByText(/歷史紀錄即將推出/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '歷史紀錄' }))
+    expect(screen.getByText(/歷史紀錄即將推出/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '好的' }))
+    expect(screen.queryByText(/歷史紀錄即將推出/)).not.toBeInTheDocument()
+  })
+})
+

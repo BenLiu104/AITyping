@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Copy, Check, Sliders, ChevronDown, Sparkles, Trash2 } from 'lucide-react';
+import { Mic, Copy, Check, Settings, ChevronDown, Sparkles, Trash2, Sprout, Tag, Globe, History, AudioLines } from 'lucide-react';
 import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
@@ -22,6 +22,28 @@ const getSenseVoiceLanguage = (language: Language): string => {
   if (language === 'yue') return 'yue';
   if (language === 'en') return 'en';
   return 'zh';
+};
+
+// Display labels for the front-page selector rows (native <select> logic unchanged).
+const MODE_LABELS: Record<Mode, string> = {
+  message: '訊息聊天',
+  email: '專業電郵',
+  todo: '待辦事項',
+  prompt: '提示工程',
+  semantic: '智能整理',
+};
+
+const LANGUAGE_LABELS: Record<Language, string> = {
+  mixed: '中英混合',
+  yue: '粵語書面',
+  'zh-Hant': '繁體中文',
+  en: '純英文',
+};
+
+const formatTimer = (totalSeconds: number): string => {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const s = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 };
 
 type LiveDebugSnapshot = {
@@ -53,7 +75,7 @@ const createDebugSnapshot = (): LiveDebugSnapshot => ({
 
 export default function App() {
   // Settings & Options state
-  const [mode, setMode] = useState<Mode>('message');
+  const [mode, setMode] = useState<Mode>('semantic');
   const [language, setLanguage] = useState<Language>('mixed');
   const [mockMode, setMockMode] = useState<boolean>(false);
 
@@ -71,6 +93,8 @@ export default function App() {
   const [copied, setCopied] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [vibrationEnabled, setVibrationEnabled] = useState<boolean>(true);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [showHistoryPlaceholder, setShowHistoryPlaceholder] = useState<boolean>(false);
 
   // Audio & WebSocket Pipeline References
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -102,6 +126,20 @@ export default function App() {
       if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
     };
   }, []);
+
+  // Recording timer (display only) — resets on each new recording, clears on stop.
+  useEffect(() => {
+    if (!isRecording) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setElapsedSeconds(0);
+    const id = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isRecording]);
 
   const cleanupAudioPipeline = (disconnectLiveClient = true) => {
     isCaptureActiveRef.current = false;
@@ -609,76 +647,38 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#121212] text-[#f5f5f7] safe-padding-top safe-padding-bottom selection:bg-[#2563eb]">
-      
-      {/* HEADER / NAVIGATION BAR */}
-      <header className="flex items-center justify-between px-5 py-4 border-b border-[#222] bg-[#1a1a1a]">
+    <div className="flex flex-col min-h-screen w-full bg-[var(--color-bg)] text-[var(--color-text)] safe-padding-top selection:bg-[var(--color-primary)]/20">
+
+      {/* HEADER */}
+      <header className="flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-blue-500 animate-pulse" />
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-[#a1a1aa] bg-clip-text text-transparent">
-            AITyping
-          </h1>
-          <span className="text-[10px] text-[#8e8e93]">{BUILD_LABEL}</span>
+          <span className="flex items-center justify-center w-9 h-9 rounded-2xl bg-[var(--color-pill-green)]">
+            <Sprout className="w-5 h-5 text-[var(--color-primary)]" />
+          </span>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--color-text)]">AITyping</h1>
           {mockMode && (
-            <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-semibold border border-amber-500/30">
+            <span className="text-[10px] bg-[var(--color-pill-yellow)] text-[#8a6d1a] px-2 py-0.5 rounded-full font-semibold">
               MOCK
             </span>
           )}
         </div>
 
-        <button 
+        <button
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-2 rounded-full transition-colors ${showSettings ? 'bg-blue-500/20 text-blue-400' : 'text-[#a1a1aa] hover:bg-[#222]'}`}
+          className={`p-2.5 rounded-full transition-colors ${showSettings ? 'bg-[var(--color-pill-green)] text-[var(--color-primary)]' : 'text-[var(--color-text-muted)] hover:bg-black/5'}`}
           aria-label="設定"
         >
-          <Sliders className="w-5 h-5" />
+          <Settings className="w-5 h-5" />
         </button>
       </header>
 
-      {/* SETTINGS PANEL (COLLAPSIBLE) */}
+      {/* SETTINGS DRAWER — mock + haptics only */}
       {showSettings && (
-        <section className="bg-[#1c1c1e] border-b border-[#2c2c2e] p-5 space-y-4 transition-all duration-300">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#8e8e93] mb-1.5 uppercase tracking-wider">整理模式</label>
-              <div className="relative">
-                <select 
-                  value={mode} 
-                  onChange={(e) => setMode(e.target.value as Mode)}
-                  className="w-full bg-[#2c2c2e] text-white rounded-xl px-3 py-2.5 text-sm appearance-none outline-none border border-[#3a3a3c] focus:border-blue-500"
-                >
-                  <option value="message">💬 訊息聊天 (Message)</option>
-                  <option value="email">✉️ 專業電郵 (Email)</option>
-                  <option value="todo">📋 待辦事項 (TODO)</option>
-                  <option value="prompt">🤖 提示工程 (Prompt)</option>
-                  <option value="semantic">🧠 語義整理 (Smart Cleanup)</option>
-                </select>
-                <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-[#8e8e93] pointer-events-none" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#8e8e93] mb-1.5 uppercase tracking-wider">語言模式</label>
-              <div className="relative">
-                <select 
-                  value={language} 
-                  onChange={(e) => setLanguage(e.target.value as Language)}
-                  className="w-full bg-[#2c2c2e] text-white rounded-xl px-3 py-2.5 text-sm appearance-none outline-none border border-[#3a3a3c] focus:border-blue-500"
-                >
-                  <option value="mixed">🔄 中英混合 (Mixed)</option>
-                  <option value="yue">🦁 粵語書面 (Cantonese)</option>
-                  <option value="zh-Hant">🇹🇼 繁體中文 (Trad Chinese)</option>
-                  <option value="en">🇬🇧 純英文 (English)</option>
-                </select>
-                <ChevronDown className="w-4 h-4 absolute right-3 top-3.5 text-[#8e8e93] pointer-events-none" />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-[#2c2c2e]">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-white">沙盒/模擬模式 (Mock)</span>
-              <span className="text-xs text-[#8e8e93]">(不消耗 API 金鑰額度)</span>
+        <section className="mx-5 mb-2 rounded-2xl bg-[var(--color-card)] p-5 space-y-4 shadow-[0_4px_16px_rgba(60,80,60,0.08)]">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-[var(--color-text)]">沙盒/模擬模式</span>
+              <span className="text-xs text-[var(--color-text-muted)]">不消耗 API 金鑰額度</span>
             </div>
             <label className="relative inline-flex h-8 w-14 cursor-pointer items-center rounded-full">
               <input
@@ -688,15 +688,13 @@ export default function App() {
                 className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
                 aria-label="切換沙盒模擬模式"
               />
-              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-700 transition-colors peer-checked:bg-amber-500" />
-              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-6" />
+              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-300 transition-colors peer-checked:bg-[var(--color-primary)]" />
+              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-6" />
             </label>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-white">觸覺震動回饋 (Haptics)</span>
-            </div>
+          <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)]">
+            <span className="text-sm font-semibold text-[var(--color-text)]">觸覺震動回饋</span>
             <label className="relative inline-flex h-8 w-14 cursor-pointer items-center rounded-full">
               <input
                 type="checkbox"
@@ -705,143 +703,209 @@ export default function App() {
                 className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
                 aria-label="切換觸覺震動回饋"
               />
-              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-700 transition-colors peer-checked:bg-blue-500" />
-              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-6" />
+              <span className="pointer-events-none absolute inset-1 rounded-full bg-zinc-300 transition-colors peer-checked:bg-[var(--color-primary)]" />
+              <span className="pointer-events-none relative ml-1 inline-block h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-6" />
             </label>
           </div>
         </section>
       )}
 
-      {/* MAIN LAYOUT */}
-      <main className="flex-1 flex flex-col p-5 space-y-4 overflow-hidden">
-        
-        {/* TRANSCRIPT PREVIEW PANEL */}
-        <div className="flex-1 min-h-[100px] flex flex-col bg-[#1c1c1e] rounded-2xl p-4 border border-[#2c2c2e] overflow-y-auto">
+      {/* MAIN */}
+      <main className="flex-1 flex flex-col px-5 pb-44 gap-4">
+
+        {/* MODE SELECTOR ROW */}
+        <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5 bg-[var(--color-pill-yellow)]">
+          <Tag className="w-5 h-5 text-[#B8860B] shrink-0" />
+          <span className="text-sm font-semibold text-[var(--color-text)] shrink-0">整理模式</span>
+          <div className="relative ml-auto flex items-center">
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as Mode)}
+              aria-label="整理模式"
+              className="appearance-none bg-transparent text-right text-sm font-semibold text-[var(--color-text)] pr-6 outline-none cursor-pointer"
+            >
+              <option value="message">{MODE_LABELS.message}</option>
+              <option value="email">{MODE_LABELS.email}</option>
+              <option value="todo">{MODE_LABELS.todo}</option>
+              <option value="prompt">{MODE_LABELS.prompt}</option>
+              <option value="semantic">{MODE_LABELS.semantic}</option>
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-0 text-[var(--color-text-muted)] pointer-events-none" />
+          </div>
+        </div>
+
+        {/* LANGUAGE SELECTOR ROW */}
+        <div className="flex items-center gap-3 rounded-2xl px-4 py-3.5 bg-[var(--color-pill-green)]">
+          <Globe className="w-5 h-5 text-[var(--color-primary)] shrink-0" />
+          <span className="text-sm font-semibold text-[var(--color-text)] shrink-0">語言模式</span>
+          <div className="relative ml-auto flex items-center">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              aria-label="語言模式"
+              className="appearance-none bg-transparent text-right text-sm font-semibold text-[var(--color-text)] pr-6 outline-none cursor-pointer"
+            >
+              <option value="mixed">{LANGUAGE_LABELS.mixed}</option>
+              <option value="yue">{LANGUAGE_LABELS.yue}</option>
+              <option value="zh-Hant">{LANGUAGE_LABELS['zh-Hant']}</option>
+              <option value="en">{LANGUAGE_LABELS.en}</option>
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-0 text-[var(--color-text-muted)] pointer-events-none" />
+          </div>
+        </div>
+
+        {/* TRANSCRIPT CARD */}
+        <div className="flex flex-col rounded-2xl bg-[var(--color-card)] p-4 shadow-[0_4px_16px_rgba(60,80,60,0.08)] min-h-[120px]">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-[#8e8e93] uppercase tracking-wider">即時聽寫草稿 (Live Transcript)</span>
+            <span className="flex items-center gap-1.5 text-sm font-bold text-[var(--color-primary)]">
+              <AudioLines className="w-4 h-4" />
+              即時聽寫
+            </span>
             {isRecording && (
-              <span className="flex items-center gap-1.5 text-xs text-red-500 font-semibold animate-pulse">
-                <span className="w-2.5 h-2.5 bg-red-500 rounded-full" />
-                RECORDING
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-muted)]">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="tabular-nums">{formatTimer(elapsedSeconds)}</span>
+                <span className="uppercase tracking-widest text-[10px]">RECORDING</span>
               </span>
             )}
           </div>
-          <div className="flex-1 text-sm leading-relaxed text-zinc-300">
+          <div className="flex-1 text-base leading-relaxed text-[var(--color-text)]">
             {finalTranscript || interimTranscript ? (
               <p>{getVisibleTranscript()}</p>
             ) : liveStatus ? (
-              <p className="text-[#8e8e93] italic">{liveStatus}</p>
+              <p className="text-[var(--color-text-muted)] italic">{liveStatus}</p>
             ) : (
-              <p className="text-[#8e8e93] italic">點一下底部 Mic 開始錄音，再點一下停止並整理...</p>
+              <p className="text-[var(--color-text-muted)] italic">點一下下方麥克風開始說話，再點一下停止並整理…</p>
             )}
           </div>
-          <p className="mt-2 text-[10px] text-[#6b7280]">
-            debug {BUILD_LABEL}: ws={liveDebug.wsOpen ? '1' : '0'} setup={liveDebug.setupComplete ? '1' : '0'} chunks={liveDebug.audioChunks} bytes={liveDebug.audioBytes} sent={liveDebug.audioSent} tx={liveDebug.transcriptEvents} end={liveDebug.streamEndSent ? '1' : '0'} ack={liveDebug.streamEndAck ? '1' : '0'} close={liveDebug.lastCloseCode ?? '-'}
-          </p>
+          {import.meta.env.DEV && (
+            <p className="mt-2 text-[10px] text-[var(--color-text-muted)]/70">
+              debug {BUILD_LABEL}: ws={liveDebug.wsOpen ? '1' : '0'} setup={liveDebug.setupComplete ? '1' : '0'} chunks={liveDebug.audioChunks} bytes={liveDebug.audioBytes} sent={liveDebug.audioSent} tx={liveDebug.transcriptEvents} end={liveDebug.streamEndSent ? '1' : '0'} ack={liveDebug.streamEndAck ? '1' : '0'} close={liveDebug.lastCloseCode ?? '-'}
+            </p>
+          )}
         </div>
 
-        {/* CLEANED OUTPUT PANEL */}
-        <div className="flex-[1.5] min-h-[150px] flex flex-col bg-[#1c1c1e] rounded-2xl p-4 border border-[#2c2c2e] overflow-hidden">
+        {/* CLEANUP RESULT CARD */}
+        <div className="flex flex-col rounded-2xl bg-[var(--color-card)] p-4 shadow-[0_4px_16px_rgba(60,80,60,0.08)] min-h-[160px]">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-blue-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              智能整理結果 (Cleaned Result)
+            <span className="flex items-center gap-1.5 text-sm font-bold text-[var(--color-primary)]">
+              <Sparkles className="w-4 h-4" />
+              智能整理結果
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {cleanedText && (
-                <button 
-                  onClick={handleReset}
-                  className="p-1.5 hover:bg-[#2c2c2e] text-[#8e8e93] hover:text-white rounded-lg transition-colors"
-                  title="清除"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <>
+                  <button
+                    onClick={handleCopy}
+                    className={`p-1.5 rounded-lg transition-colors ${copied ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)] hover:bg-black/5'}`}
+                    title="複製"
+                    aria-label="複製整理結果"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:bg-black/5 transition-colors"
+                    title="清除"
+                    aria-label="清除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </>
               )}
             </div>
           </div>
-          
-          <div className="flex-1 relative overflow-hidden">
-            {isLoading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#1c1c1e]/80 backdrop-blur-xs space-y-3">
-                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-[#8e8e93] font-medium">Gemini 智能語音整理中...</p>
+
+          <div className="flex-1 relative">
+            {isLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--color-card)]/80 space-y-3 z-10">
+                <div className="w-8 h-8 border-3 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs text-[var(--color-text-muted)] font-medium">智能整理中…</p>
               </div>
-            ) : null}
+            )}
 
             {errorMsg && (
-              <div className="absolute inset-x-0 top-0 bg-red-500/10 border border-red-500/20 text-red-400 p-2.5 rounded-xl text-xs flex items-center justify-between mb-2 z-20">
+              <div className="mb-2 bg-red-50 border border-red-200 text-red-600 p-2.5 rounded-xl text-xs flex items-center justify-between">
                 <span>{errorMsg}</span>
-                <button onClick={() => setErrorMsg('')} className="text-red-400 font-bold px-1.5 hover:bg-red-500/20 rounded">✕</button>
+                <button onClick={() => setErrorMsg('')} className="text-red-500 font-bold px-1.5">✕</button>
               </div>
             )}
 
             <textarea
               value={cleanedText}
               onChange={(e) => setCleanedText(e.target.value)}
-              placeholder="停止錄音後，Gemini 就會自動修剪贅字、多餘口頭禪，並把精準段落文字呈現於此..."
-              className="w-full h-full bg-transparent text-white border-none outline-none resize-none text-base leading-relaxed placeholder:text-[#555] placeholder:italic"
+              placeholder="停止錄音後，這裡會顯示整理好的文字…"
+              className="w-full min-h-[96px] bg-transparent text-[var(--color-text)] border-none outline-none resize-none text-base leading-relaxed placeholder:text-[var(--color-text-muted)]/60 placeholder:italic"
             />
           </div>
+        </div>
+      </main>
 
-          {/* COPY ACTION BUTTON */}
-          <div className="mt-3">
-            <button
-              onClick={handleCopy}
-              disabled={!cleanedText || isLoading}
-              className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all ${
-                cleanedText 
-                  ? copied 
-                    ? 'bg-emerald-600 text-white' 
-                    : 'bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-bold shadow-lg shadow-blue-600/10' 
-                  : 'bg-[#2c2c2e] text-zinc-600 cursor-not-allowed'
-              }`}
-            >
-              {copied ? (
+      {/* BOTTOM CONTROLS — mic (center) + history (right) */}
+      <div className="fixed bottom-0 inset-x-0 bg-gradient-to-t from-[var(--color-bg)] via-[var(--color-bg)] to-transparent pt-8 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+        <div className="grid grid-cols-3 items-center px-8 max-w-md mx-auto">
+          <div />
+          <div className="flex justify-center">
+            <div className="relative">
+              {isRecording && (
                 <>
-                  <Check className="w-5 h-5" />
-                  已複製至剪貼簿！
-                </>
-              ) : (
-                <>
-                  <Copy className="w-5 h-5" />
-                  一鍵複製結果
+                  <div className="absolute inset-0 bg-[var(--color-primary)]/25 rounded-full animate-ping" />
+                  <div className="absolute inset-0 bg-[var(--color-primary)]/15 rounded-full animate-ping scale-110" />
                 </>
               )}
-            </button>
+              <button
+                onPointerDown={handleMicPress}
+                className={`w-20 h-20 rounded-full flex items-center justify-center relative z-10 transition-all active:scale-90 select-none shadow-[0_8px_24px_rgba(76,175,103,0.35)] ${
+                  isRecording
+                    ? 'bg-red-500 text-white scale-105'
+                    : 'bg-[var(--color-primary)] text-white'
+                }`}
+                style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
+                aria-label={isRecording ? '停止錄音並整理' : '點一下開始錄音'}
+              >
+                <Mic className={`w-9 h-9 ${isRecording ? 'animate-pulse' : ''}`} />
+              </button>
+            </div>
           </div>
-        </div>
-
-        {/* RECORDING CONTROLLER AREA (TAP-TO-TOGGLE) */}
-        <div className="flex flex-col items-center justify-center py-4 space-y-3">
-          <div className="relative">
-            {/* Pulsing radar effects when recording */}
-            {isRecording && (
-              <>
-                <div className="absolute inset-0 bg-blue-500/30 rounded-full animate-ping scale-150" />
-                <div className="absolute inset-0 bg-blue-500/20 rounded-full animate-ping scale-125" />
-              </>
-            )}
-
+          <div className="flex justify-end">
             <button
-              onPointerDown={handleMicPress}
-              className={`w-24 h-24 rounded-full flex items-center justify-center relative z-10 transition-all active:scale-90 select-none ${
-                isRecording 
-                  ? 'bg-red-500 text-white scale-105 shadow-2xl shadow-red-500/20' 
-                  : 'bg-gradient-to-tr from-blue-600 to-blue-500 text-white shadow-xl shadow-blue-600/20 hover:shadow-blue-600/30'
-              }`}
-              style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
-              aria-label={isRecording ? '停止錄音並整理' : '點一下開始錄音'}
+              onClick={() => { setShowHistoryPlaceholder(true); triggerVibe(20); }}
+              className="flex flex-col items-center gap-1 text-[var(--color-text-muted)] active:scale-95 transition-transform"
+              aria-label="歷史紀錄"
             >
-              <Mic className={`w-10 h-10 ${isRecording ? 'animate-pulse' : ''}`} />
+              <span className="flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-card)] shadow-[0_4px_16px_rgba(60,80,60,0.08)]">
+                <History className="w-5 h-5" />
+              </span>
+              <span className="text-[10px] font-medium">歷史紀錄</span>
             </button>
           </div>
-
-          <p className="text-xs font-semibold text-[#8e8e93] select-none uppercase tracking-widest text-center">
-            {isRecording ? '🎤 錄音中 · 再點一下停止整理' : '👆 點一下開始錄音 · 再點一下停止'}
-          </p>
         </div>
+      </div>
 
-      </main>
+      {/* HISTORY PLACEHOLDER MODAL */}
+      {showHistoryPlaceholder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-8"
+          onClick={() => setShowHistoryPlaceholder(false)}
+        >
+          <div
+            className="rounded-2xl bg-[var(--color-card)] p-6 max-w-xs w-full text-center space-y-3 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[var(--color-pill-green)] mx-auto">
+              <History className="w-6 h-6 text-[var(--color-primary)]" />
+            </span>
+            <p className="text-base font-semibold text-[var(--color-text)]">歷史紀錄即將推出</p>
+            <p className="text-sm text-[var(--color-text-muted)]">這個功能還在打磨中，敬請期待。</p>
+            <button
+              onClick={() => setShowHistoryPlaceholder(false)}
+              className="mt-2 w-full py-2.5 rounded-xl bg-[var(--color-primary)] text-white font-semibold active:scale-[0.98] transition-transform"
+            >
+              好的
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

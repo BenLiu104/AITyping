@@ -7,10 +7,17 @@
 ## [Unreleased]
 
 ### Added
+- 主畫面「柔和生活風」UI 改版（layout-only）：暖米白背景 + 綠色 accent + 白色圓角卡片；整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐；即時聽寫卡新增錄音計時器（`mm:ss`）；底部新增「歷史紀錄」按鈕（placeholder，點擊彈「歷史紀錄即將推出」modal，尚無真實 history 儲存邏輯）。錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 - `POST /api/smart-cleanup`：`semantic` cleanup mode MVP1（Smart Cleanup）— 對停止錄音後嘅完整最終逐字稿做語義層整理，推斷用戶最終真正想講嘅意思（處理猶豫、自我修正、改變主意），非純文法修正。回應 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只顯示 `clean_text`，寫入既有 cleanup 輸出欄位。
 - `GeminiAdapter.smart_cleanup()`：用 `response_mime_type: application/json` + `response_schema` 約束 Gemini 輸出；解析失敗時 regex 搶救 `clean_text`，完全無法搶救才拋錯。
 
 ### Changed
+- 預設整理模式由 `message` 改為 `semantic`（智能整理）— 開 app 即預選 Smart Cleanup。
+- Settings drawer 精簡為只剩 mock 模式 + haptics 兩個 toggle（mode / language selector 已移出到主畫面）。
+- debug 遙測列改為只在 `import.meta.env.DEV` 顯示，`vite build` production bundle 已剝除（Vitest 下仍渲染，故既有 `end=1 ack=1` regression 維持）。
+- PWA manifest `theme_color` / `background_color` 由 `#1a1a1a` 改為暖米白 `#FFF9EF`，配合新淺色 UI（避免 iOS 安裝啟動畫面色差）。
+- `index.css` `:root` / `body` 由 dark（`#121212`）改為暖淺色，並加入「柔和生活風」CSS 自訂變數 tokens；app shell 由固定 `h-screen overflow-hidden` 改為 `min-h-screen` 自然文檔流以配合常駐 selector + 計時器內容。
+- 語義整理 mode 的 `<select>` option 顯示文字由「語義整理」改為「智能整理」（value `semantic` 與所有邏輯不變）。
 - `Mode` type 新增 `'semantic'` 選項；前端 mode dropdown 加對應 UI option。
 - 前端 stop-recording flow（`stopRealRecording` / `stopMockRecording`）改用 `runCleanupForCurrentMode()` 分支：`semantic` mode 打 `/api/smart-cleanup`，其餘 4 種 mode 維持打 `/api/cleanup`（不變）；兩者互斥，不並行呼叫。
 - `deploy-frontend.yml` deploy trigger branch：`transcript-improve` → `semantic-dev`；同步更新 GitHub repo `github-pages` environment 的 deployment-branch-policy 白名單（移除 `transcript-improve`，加入 `semantic-dev`）。
