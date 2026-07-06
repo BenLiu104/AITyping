@@ -23,7 +23,8 @@
 - `deploy-frontend.yml` deploy trigger branch：`transcript-improve` → `semantic-dev`；同步更新 GitHub repo `github-pages` environment 的 deployment-branch-policy 白名單（移除 `transcript-improve`，加入 `semantic-dev`）。
 - `transcript-improve` branch merged into `main`（SenseVoice v2 內容合併回主線）。
 - `semantic-dev` branch merged into `main`（Smart Cleanup MVP1，real API 真機驗收通過後合併）。
-- Phase 2 持續進行：新增 `uixi` branch 準備 UI 改版。
+- `uixi` branch merged into `main`（「柔和生活風」主畫面 UI 改版，deploy 後 Ben 確認「效果都 ok」）。
+- `deploy-frontend.yml` deploy trigger branch 加入 `uixi`（`semantic-dev` 保留）；同步將 `uixi` 加入 `github-pages` environment 的 deployment-branch-policy 白名單，供 UI 改版真機測試自動 deploy。
 
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。

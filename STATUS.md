@@ -5,14 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — Smart Cleanup MVP1 已完成並 merge 入 `main`；現正進行 UI 改版（`uixi` branch）
-- **Branch**: `uixi`（從 `main` 開出，進行「柔和生活風」主畫面 UI 改版）
+- **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版已完成、deploy、Ben 確認「效果都 ok」，已 merge 入 `main`
+- **Branch**: `main`（`uixi` 已 merge，工作完成）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
-- **Current deployed frontend build**: UI label `v01:35`（含 Smart Cleanup；已 deploy 並經 Ben 真機確認「效果還可以」）— 注意：`uixi` 的 UI 改版**尚未 deploy**，線上仍是舊 dark UI
-- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` branch (path: `frontend/**`)；`uixi` push **不會**自動 deploy
-- **Current work**: 「柔和生活風」主畫面 UI 改版已在本地完成（layout-only，logic 全數保留），tests / typecheck / build 全綠。**未 deploy、未真機驗收**（本 session 無 iPhone）。下一步：Ben review UI + 真機驗收前，同步 deploy trigger branch / environment policy。
+- **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` 或 `uixi` branch (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單已含兩者
+- **Current work**: UI 改版已 merge 入 `main`。下一步：其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
 
 ## 2. Current Product Behavior
 
@@ -142,10 +142,8 @@
 
 ## 6. Next Steps
 
-1. **UI 改版（🎯 本地完成，待 review + deploy）**
-   - 「柔和生活風」主畫面已在 `uixi` 本地完成（layout-only，tests/typecheck/build 全綠）；plan 見 `UI_change.md`
-   - 待辦：Ben review 視覺 + iPhone Safari 真機驗收
-   - Deploy 前記得：`deploy-frontend.yml` trigger branch 現指向 `semantic-dev`，`uixi` 上 push 不會自動 deploy——需要時比照上次流程，同步更新 workflow trigger branch + environment deployment-branch-policy（見 §5 pitfalls），或用 `gh workflow run --ref uixi` 手動觸發（但仍受 environment policy 限制）
+1. **UI 改版（✅ 完成並 merge 入 `main`）**
+   - 「柔和生活風」主畫面已 deploy、Ben 確認「效果都 ok」，`uixi` → `main` merge 完成；plan 見 `UI_change.md`
    - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
 2. **Phase 2 收尾觀察**
