@@ -2,7 +2,7 @@ name: Deploy Frontend to GitHub Pages
 
 on:
   push:
-    branches: [semantic-dev]
+    branches: [semantic-dev, uixi]
     paths:
       - 'frontend/**'
       - '.github/workflows/deploy-frontend.yml'
