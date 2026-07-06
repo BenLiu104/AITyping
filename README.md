@@ -62,8 +62,9 @@ AITyping/
 ├── docs/
 │   └── adr/           ← 架構決策紀錄 (Architecture Decision Records)
 ├── brainstorm/        ← 前期 5 個 session 的可行性研究（已存在）
-├── frontend/          ← (Phase 1 建立) Vite PWA
-└── backend/           ← (Phase 1 建立) FastAPI
+├── frontend/          ← Vite PWA
+├── backend/           ← FastAPI（Gemini adapter）
+└── sensevoice/        ← 廣東話 STT API（Flask + WS，VPS host systemd）
 ```
 
 ## 快速開始（Phase 1 後生效）
@@ -73,6 +74,8 @@ AITyping/
 cd frontend && npm install && npm run dev
 # 後端
 cd backend && uv venv && source .venv/bin/activate && uv pip install -r requirements.txt && uvicorn app.main:app --reload
+# SenseVoice STT（部署細節見 sensevoice/DEPLOY.md）
+cd sensevoice && python3.11 -m venv venv && ./venv/bin/pip install -r requirements.txt && ./venv/bin/python api.py --preload --port 8082
 ```
 
 > iPhone 實機測試需要 HTTPS（`getUserMedia` 限制）。用 Caddy 或 Cloudflare Tunnel 把 VPS 包成 `https://<domain>`。

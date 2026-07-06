@@ -1,0 +1,22 @@
+# SenseVoice service — 唔入 git 嘅嘢
+
+# ── Python venv / cache ──────────────────────────
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# ── 模型 blob（由 ModelScope / HuggingFace 下載，唔 commit）──
+*.onnx
+*.bin
+models/
+SenseVoiceSmall/
+*.pt
+
+# ── Runtime trace（api.py 寫去 /tmp/sv-debug，但保險起見）──
+sv-debug/
+*.wav
+*.log

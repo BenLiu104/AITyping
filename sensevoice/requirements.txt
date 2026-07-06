@@ -1,0 +1,22 @@
+# SenseVoice Cantonese STT API — runtime dependencies
+# 對應 systemd sensevoice-api.service（VPS ARM64 CPU）。
+# 由 /home/ubuntu/experiment/voice_test/venv 抽取 direct import 並鎖定版本。
+
+# ── Web / WebSocket ──────────────────────────────
+Flask==3.1.3
+flask-cors==6.0.5
+flask-sock==0.7.0
+simple-websocket==1.1.0
+
+# ── ASR runtime ──────────────────────────────────
+# streaming SenseVoice wrapper（帶 kaldi_native_fbank / onnxruntime / sounddevice）
+sense-voice-streaming-asr==0.2.3
+funasr==1.3.14                       # FSMN-VAD 模型載入
+
+# ── 音訊處理 ──────────────────────────────────────
+librosa==0.11.0
+soundfile==0.14.0
+numpy==1.26.4
+
+# ── 中文轉換 ──────────────────────────────────────
+opencc-python-reimplemented==0.1.7   # 簡→繁（s2t）
