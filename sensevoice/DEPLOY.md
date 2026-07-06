@@ -30,7 +30,7 @@ AITyping 三大 service 之一：
 
 ```bash
 # 1. 目錄（VPS 現行路徑，systemd WorkingDirectory 指住呢度）
-cd /home/ubuntu/experiment/voice_test    # 或任何你 clone 出嚟嘅 sensevoice/
+cd <INSTALL_DIR>    # e.g. 你 clone 出嚟嘅 sensevoice/
 
 # 2. venv + 依賴（~2GB，含 onnxruntime / funasr / librosa）
 python3.11 -m venv venv
@@ -56,19 +56,19 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/experiment/voice_test
-ExecStart=/home/ubuntu/experiment/voice_test/venv/bin/python /home/ubuntu/experiment/voice_test/api.py --preload --port 8082
+User=<DEPLOY_USER>
+WorkingDirectory=<INSTALL_DIR>
+ExecStart=<INSTALL_DIR>/venv/bin/python <INSTALL_DIR>/api.py --preload --port 8082
 Restart=always
 RestartSec=5
 Environment="PYTHONUNBUFFERED=1"
-Environment="PATH=/home/ubuntu/experiment/voice_test/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=<INSTALL_DIR>/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-> ⚠️ `WorkingDirectory` / `ExecStart` 目前指向 `experiment/voice_test`。若日後將
+> ⚠️ `WorkingDirectory` / `ExecStart` 目前指向舊有 install dir。若日後將
 > 執行路徑搬去 repo checkout，兩處都要同步更新再 `systemctl daemon-reload`。
 
 ```bash

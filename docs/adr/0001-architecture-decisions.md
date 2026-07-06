@@ -38,7 +38,7 @@
 - **理由：** Live API 仍是 preview，model 名與 API 會變。adapter 隔離變動，改一處即可。
 
 ## 決策 7：部署在 VPS + Docker + Cloudflare Tunnel
-- **選擇：** VPS (161.153.57.166, ARM64) + Docker + Cloudflare Tunnel 反向代理。
+- **選擇：** VPS (`<VPS_IP>`, ARM64) + Docker + Cloudflare Tunnel 反向代理。
 - **理由：** `getUserMedia` 需要 HTTPS。你已經明確指定並採用 Cloudflare Tunnel 方案（透過域名 `https://aityping.bochibb.qzz.io` 入 VPS），這樣 VPS 就不需要向外網曝露 80 或 443 埠口，安全性更高，且能享受 Cloudflare 提供的免費安全防護。
 - **配置詳情：** 域名 `https://aityping.bochibb.qzz.io` 會對應後端 config 中的 CORS Allowed Origins，且 Gemini Live API 的雙向 Web Token 機制也在此安全域名下進行。
 - **模型選定：**

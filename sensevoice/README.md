@@ -2,7 +2,7 @@
 
 > 基於阿里巴巴 FunAudioLLM 嘅 SenseVoiceSmall 模型，喺 ARM64 CPU VPS 上 self-host 嘅廣東話語音轉文字 API。
 >
-> **Server:** `http://161.153.57.166:8082`
+> **Server:** `http://<VPS_IP>:8082`
 > **Service:** `sensevoice-api.service` (systemd)
 
 ---
@@ -96,7 +96,7 @@ SenseVoice 保留廣東話口語特色，Whisper 轉晒做書面語。
 ### 3.1 健康檢查
 
 ```bash
-curl http://161.153.57.166:8082/ping
+curl http://<VPS_IP>:8082/ping
 ```
 
 Response:
@@ -125,7 +125,7 @@ Response:
 **Example:**
 
 ```bash
-curl -X POST http://161.153.57.166:8082/transcribe \
+curl -X POST http://<VPS_IP>:8082/transcribe \
   -F "audio=@recording.wav" \
   -F "language=yue"
 ```
@@ -162,7 +162,7 @@ curl -X POST http://161.153.57.166:8082/transcribe \
 一次過送多個 audio 檔，全部轉完一次過回。
 
 ```bash
-curl -X POST http://161.153.57.166:8082/transcribe_batch \
+curl -X POST http://<VPS_IP>:8082/transcribe_batch \
   -F "audio=@file1.wav" \
   -F "audio=@file2.wav" \
   -F "language=yue"
@@ -199,7 +199,7 @@ async function transcribeCantonese(audioBlob) {
   formData.append('audio', audioBlob, 'recording.wav');
   formData.append('language', 'yue');
 
-  const res = await fetch('http://161.153.57.166:8082/transcribe', {
+  const res = await fetch('http://<VPS_IP>:8082/transcribe', {
     method: 'POST',
     body: formData,
   });
@@ -313,7 +313,7 @@ function writeString(view, offset, string) {
 import Foundation
 
 func transcribeCantonese(audioData: Data) async throws -> String {
-    let url = URL(string: "http://161.153.57.166:8082/transcribe")!
+    let url = URL(string: "http://<VPS_IP>:8082/transcribe")!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
 
@@ -543,7 +543,7 @@ model = AutoModel(
 ## API Reference Card
 
 ```text
-BASE URL: http://161.153.57.166:8082
+BASE URL: http://<VPS_IP>:8082
 
 GET  /ping                    → {"status":"ok","model_loaded":true}
 POST /transcribe              → {"transcript":"...","processing_time_s":...}

@@ -6,7 +6,7 @@ Goal: verify whether a local CPU-only incremental SenseVoice wrapper can emit us
 
 - Runtime candidate: `nikoseven/sense-voice-streaming-asr`
 - Host: Oracle ARM64 VPS (`aarch64`, 2 CPU, 11 GB RAM)
-- Python env: `/home/ubuntu/experiment/voice_test/venv`
+- Python env: `<INSTALL_DIR>/venv`
 - Feed mode: 16 kHz mono WAV, chunked into 100 ms frames
 
 ## Important findings

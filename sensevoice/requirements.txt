@@ -1,6 +1,6 @@
 # SenseVoice Cantonese STT API — runtime dependencies
 # 對應 systemd sensevoice-api.service（VPS ARM64 CPU）。
-# 由 /home/ubuntu/experiment/voice_test/venv 抽取 direct import 並鎖定版本。
+# 由 SenseVoice service venv 抽取 direct import 並鎖定版本。
 
 # ── Web / WebSocket ──────────────────────────────
 Flask==3.1.3

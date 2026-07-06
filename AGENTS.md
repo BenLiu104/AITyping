@@ -45,7 +45,7 @@ AITyping/
 - 後端：Python 3.11+、FastAPI、uvicorn、`google-genai` SDK、pydantic v2
 - 套件管理：前端 `npm`；後端 `uv`
 - 部署：Docker + docker-compose、Caddy（自動 HTTPS）或 Cloudflare Tunnel
-- 目標環境：VPS 161.153.57.166（Ubuntu 24.04 **ARM64** + Docker）
+- 目標環境：VPS `<VPS_IP>`（Ubuntu 24.04 **ARM64** + Docker）
 
 > ⚠️ ARM64：base image 要選 arm64 相容（官方 multi-arch image OK）。
 
