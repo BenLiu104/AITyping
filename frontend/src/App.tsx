@@ -86,6 +86,9 @@ export default function App() {
   const [liveStatus, setLiveStatus] = useState<string>('');
   const [liveDebug, setLiveDebug] = useState<LiveDebugSnapshot>(() => createDebugSnapshot());
   const [cleanedText, setCleanedText] = useState<string>('');
+  const [cleanupSourceTranscript, setCleanupSourceTranscript] = useState<string>('');
+  const [lastCleanedMode, setLastCleanedMode] = useState<Mode | null>(null);
+  const [lastCleanedLanguage, setLastCleanedLanguage] = useState<Language | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
@@ -102,6 +105,7 @@ export default function App() {
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const liveClientRef = useRef<LiveClient | SenseVoiceWsClient | null>(null);
   const transcriptRef = useRef<string>('');
+  const cleanupRunIdRef = useRef<number>(0);
   const isPrimingMicPermissionRef = useRef<boolean>(false);
   const isMicPrimedForSessionRef = useRef<boolean>(false);
   const isCaptureActiveRef = useRef<boolean>(false);
@@ -267,24 +271,34 @@ export default function App() {
     // Call Mock Cleanup or Real VPS /api/cleanup
     setIsLoading(true);
     triggerVibe(50);
+    let runId = cleanupRunIdRef.current;
 
     try {
       const textToClean = finalTranscript || '今日天氣真係幾好啊 by the way 聽日我哋幾點見面？ let me check my calendar 唔好意思遲咗覆你。';
+      const targetMode = mode;
+      const targetLanguage = language;
+      runId = ++cleanupRunIdRef.current;
+      setCleanupSourceTranscript(textToClean);
       
       let cleanedResult = '';
       if (!mockMode) {
-        cleanedResult = await runCleanupForCurrentMode(textToClean);
+        cleanedResult = await runCleanup(textToClean, targetMode, targetLanguage);
       } else {
         // Simulation Delay
         await new Promise((resolve) => setTimeout(resolve, 800));
-        cleanedResult = simulateMockCleanup(textToClean, mode, language);
+        cleanedResult = simulateMockCleanup(textToClean, targetMode, targetLanguage);
       }
-      
+
+      if (runId !== cleanupRunIdRef.current) return;
       setCleanedText(cleanedResult);
+      setLastCleanedMode(targetMode);
+      setLastCleanedLanguage(targetLanguage);
     } catch (err: any) {
       setErrorMsg(err.message || '整理失敗，請再試一次');
     } finally {
-      setIsLoading(false);
+      if (cleanupRunIdRef.current === runId) {
+        setIsLoading(false);
+      }
       triggerVibe(40);
     }
   };
@@ -316,14 +330,18 @@ export default function App() {
     return `${cleaned}`;
   };
 
-  const callCleanupAPI = async (text: string): Promise<string> => {
+  const callCleanupAPI = async (
+    text: string,
+    targetMode: Exclude<Mode, 'semantic'>,
+    targetLanguage: Language,
+  ): Promise<string> => {
     const res = await fetch(`${API_BASE}/api/cleanup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         rawTranscript: text,
-        mode,
-        language,
+        mode: targetMode,
+        language: targetLanguage,
         style: 'natural'
       })
     });
@@ -332,13 +350,13 @@ export default function App() {
     return data.cleaned;
   };
 
-  const callSmartCleanupAPI = async (text: string): Promise<string> => {
+  const callSmartCleanupAPI = async (text: string, targetLanguage: Language): Promise<string> => {
     const res = await fetch(`${API_BASE}/api/smart-cleanup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         transcript: text,
-        languageMode: language,
+        languageMode: targetLanguage,
       })
     });
     if (!res.ok) throw new Error('Smart Cleanup API 呼叫失敗');
@@ -346,8 +364,10 @@ export default function App() {
     return data.clean_text;
   };
 
-  const runCleanupForCurrentMode = (text: string): Promise<string> =>
-    mode === 'semantic' ? callSmartCleanupAPI(text) : callCleanupAPI(text);
+  const runCleanup = (text: string, targetMode: Mode, targetLanguage: Language): Promise<string> =>
+    targetMode === 'semantic'
+      ? callSmartCleanupAPI(text, targetLanguage)
+      : callCleanupAPI(text, targetMode, targetLanguage);
 
   // Real Audio Pipeline Setup (iOS Safari Compliant)
   const startRealRecording = async () => {
@@ -356,6 +376,10 @@ export default function App() {
     resetDebugSnapshot();
     setInterimTranscript('');
     setFinalTranscript('');
+    setCleanupSourceTranscript('');
+    setLastCleanedMode(null);
+    setLastCleanedLanguage(null);
+    cleanupRunIdRef.current++;
     transcriptRef.current = '';
 
     try {
@@ -576,14 +600,24 @@ export default function App() {
     setLiveStatus('');
     setIsLoading(true);
     triggerVibe(50);
+    let runId = cleanupRunIdRef.current;
 
     try {
-      const cleanedResult = await runCleanupForCurrentMode(finalText);
+      const targetMode = mode;
+      const targetLanguage = language;
+      runId = ++cleanupRunIdRef.current;
+      setCleanupSourceTranscript(finalText);
+      const cleanedResult = await runCleanup(finalText, targetMode, targetLanguage);
+      if (runId !== cleanupRunIdRef.current) return;
       setCleanedText(cleanedResult);
+      setLastCleanedMode(targetMode);
+      setLastCleanedLanguage(targetLanguage);
     } catch (err: any) {
       setErrorMsg(err.message || '整理失敗，請再試一次');
     } finally {
-      setIsLoading(false);
+      if (cleanupRunIdRef.current === runId) {
+        setIsLoading(false);
+      }
       triggerVibe(40);
     }
   };
@@ -610,6 +644,10 @@ export default function App() {
     setCleanedText('');
     setFinalTranscript('');
     setInterimTranscript('');
+    setCleanupSourceTranscript('');
+    setLastCleanedMode(null);
+    setLastCleanedLanguage(null);
+    cleanupRunIdRef.current++;
     setLiveStatus('');
     resetDebugSnapshot();
     transcriptRef.current = '';
@@ -639,11 +677,47 @@ export default function App() {
     setFinalTranscript('');
     setInterimTranscript('');
     setCleanedText('');
+    setCleanupSourceTranscript('');
+    setLastCleanedMode(null);
+    setLastCleanedLanguage(null);
+    cleanupRunIdRef.current++;
     setErrorMsg('');
     setLiveStatus('');
     resetDebugSnapshot();
     transcriptRef.current = '';
     triggerVibe(30);
+  };
+
+  const handleModeChange = async (nextMode: Mode) => {
+    setMode(nextMode);
+
+    if (isRecording) return;
+    if (!cleanupSourceTranscript.trim()) return;
+    if (cleanedText && nextMode === lastCleanedMode && language === lastCleanedLanguage) return;
+
+    const targetLanguage = language;
+    const sourceTranscript = cleanupSourceTranscript;
+    const runId = ++cleanupRunIdRef.current;
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      const cleanedResult = mockMode
+        ? simulateMockCleanup(sourceTranscript, nextMode, targetLanguage)
+        : await runCleanup(sourceTranscript, nextMode, targetLanguage);
+
+      if (runId !== cleanupRunIdRef.current) return;
+      setCleanedText(cleanedResult);
+      setLastCleanedMode(nextMode);
+      setLastCleanedLanguage(targetLanguage);
+    } catch (err: any) {
+      if (runId !== cleanupRunIdRef.current) return;
+      setErrorMsg(err.message || '整理失敗，請再試一次');
+    } finally {
+      if (runId === cleanupRunIdRef.current) {
+        setIsLoading(false);
+      }
+    }
   };
 
   return (
@@ -720,7 +794,9 @@ export default function App() {
           <div className="relative ml-auto flex items-center">
             <select
               value={mode}
-              onChange={(e) => setMode(e.target.value as Mode)}
+              onChange={(e) => {
+                void handleModeChange(e.target.value as Mode);
+              }}
               aria-label="整理模式"
               className="appearance-none bg-transparent text-right text-sm font-semibold text-[var(--color-text)] pr-6 outline-none cursor-pointer"
             >

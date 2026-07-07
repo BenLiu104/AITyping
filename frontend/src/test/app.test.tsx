@@ -957,6 +957,154 @@ describe('Smart Cleanup (semantic mode) — MVP1', () => {
   })
 })
 
+describe('Cleanup mode re-run after recording', () => {
+  const completeMessageCleanup = async (fetchMock: ReturnType<typeof vi.fn>) => {
+    mockBrowserAudioPipeline()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // prime mic permission
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // start SenseVoice recording
+      await flushPromises()
+    })
+    await act(async () => {
+      senseVoiceClientMockState.latestConfig.onTranscription('同一份原始逐字稿', true)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton) // stop and cleanup
+      await flushPromises()
+    })
+  }
+
+  it('re-runs /api/cleanup with the same raw transcript when mode changes from message to todo', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ cleaned: '訊息整理結果' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ cleaned: '待辦整理結果' }) })
+
+    await completeMessageCleanup(fetchMock)
+
+    expect((screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement).value).toBe('訊息整理結果')
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'todo' } })
+      await flushPromises()
+    })
+
+    const cleanupCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/cleanup')
+    expect(cleanupCalls).toHaveLength(2)
+    const rerunBody = JSON.parse(cleanupCalls[1][1].body as string)
+    expect(rerunBody).toMatchObject({
+      rawTranscript: '同一份原始逐字稿',
+      mode: 'todo',
+      language: 'mixed',
+      style: 'natural',
+    })
+    expect(screen.getByText('同一份原始逐字稿')).toBeInTheDocument()
+    expect((screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement).value).toBe('待辦整理結果')
+  })
+
+  it('re-runs /api/smart-cleanup with the same raw transcript when mode changes to semantic', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ cleaned: '訊息整理結果' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          clean_text: '智能整理結果',
+          intent_status: 'decided',
+          reasoning_summary: 'same source transcript',
+          confidence: 0.9,
+        }),
+      })
+
+    await completeMessageCleanup(fetchMock)
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'semantic' } })
+      await flushPromises()
+    })
+
+    const smartCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/smart-cleanup')
+    expect(smartCalls).toHaveLength(1)
+    const smartBody = JSON.parse(smartCalls[0][1].body as string)
+    expect(smartBody).toMatchObject({
+      transcript: '同一份原始逐字稿',
+      languageMode: 'mixed',
+    })
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/cleanup')).toHaveLength(1)
+    expect(screen.getByText('同一份原始逐字稿')).toBeInTheDocument()
+    expect((screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement).value).toBe('智能整理結果')
+  })
+
+  it('does not call cleanup endpoints when cleanup mode changes while recording', async () => {
+    mockBrowserAudioPipeline()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'todo' } })
+      await flushPromises()
+    })
+
+    expect(screen.getByText(/RECORDING/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/cleanup', expect.anything())
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/smart-cleanup', expect.anything())
+  })
+
+  it('does not call cleanup endpoints when cleanup mode changes before any transcript exists', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'message' } })
+      await flushPromises()
+    })
+
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/cleanup', expect.anything())
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/smart-cleanup', expect.anything())
+  })
+
+  it('keeps the raw transcript and old cleaned result visible when re-cleanup fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ cleaned: '原本整理結果' }) })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+
+    await completeMessageCleanup(fetchMock)
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('整理模式'), { target: { value: 'todo' } })
+      await flushPromises()
+    })
+
+    expect(screen.getByText('同一份原始逐字稿')).toBeInTheDocument()
+    expect((screen.getByPlaceholderText(/停止錄音後/i) as HTMLTextAreaElement).value).toBe('原本整理結果')
+    expect(screen.getByText(/Cleanup API 呼叫失敗/i)).toBeInTheDocument()
+  })
+})
+
 describe('柔和生活風 UI — front-page selectors & history placeholder', () => {
   it('defaults the 整理模式 selector to 智能整理 (semantic) on the main screen', () => {
     render(<App />)
@@ -981,4 +1129,3 @@ describe('柔和生活風 UI — front-page selectors & history placeholder', ()
     expect(screen.queryByText(/歷史紀錄即將推出/)).not.toBeInTheDocument()
   })
 })
-
