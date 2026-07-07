@@ -6,13 +6,13 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 — Smart Cleanup MVP1 已完成並 merge 入 `main`；現正進行 UI 改版（`uixi` branch）
-- **Branch**: `uixi`（從 `main` 開出，進行「柔和生活風」主畫面 UI 改版）
+- **Branch**: `uiux`（由遠端 `uixi` UI 改版分支延伸；本次用於 cleanup mode re-run UX）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
 - **Current deployed frontend build**: UI label `v01:35`（含 Smart Cleanup；已 deploy 並經 Ben 真機確認「效果還可以」）— 注意：`uixi` 的 UI 改版**尚未 deploy**，線上仍是舊 dark UI
-- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` branch (path: `frontend/**`)；`uixi` push **不會**自動 deploy
-- **Current work**: 「柔和生活風」主畫面 UI 改版已在本地完成（layout-only，logic 全數保留），tests / typecheck / build 全綠。**未 deploy、未真機驗收**（本 session 無 iPhone）。下一步：Ben review UI + 真機驗收前，同步 deploy trigger branch / environment policy。
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；注意 GitHub Pages environment branch policy 仍需允許對應 branch 才可真正 deploy
+- **Current work**: Cleanup mode can now be changed after cleanup; frontend reuses saved final transcript and re-runs the appropriate cleanup endpoint. Focused frontend tests / typecheck / build pass locally. **未 deploy、未真機驗收**（本 session 無 iPhone）。下一步：push `uiux` 觸發 CI / public domain testing。
 
 ## 2. Current Product Behavior
 
@@ -25,6 +25,7 @@
   - `semantic` → `POST /api/smart-cleanup`，回傳 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只取 `clean_text` 寫入同一個 cleanup 欄位（其餘 metadata MVP1 不顯示，留 debug/未來用）。兩個 endpoint 互斥，不會並行呼叫。
   - Smart Cleanup 只喺 stop 後、final transcript 非空時觸發一次；interim transcript 不觸發；空 transcript 不觸發（沿用既有「stop 後才呼叫 cleanup」時序，免費繼承這條 acceptance criteria）。
   - Smart Cleanup 失敗時不影響 raw transcript：錯誤訊息走既有 `errorMsg` state 顯示，cleanup 輸出欄位維持空白，不 crash。
+  - Cleanup mode can now be changed after cleanup; frontend reuses saved final transcript and re-runs the appropriate cleanup endpoint. Re-cleanup 只替換 cleaned result，不修改 raw transcript、不重錄、不重跑 STT；失敗時保留舊 cleaned result 並顯示 non-blocking error。
 - **Language routing（本地工作樹）**：
   - `en` / `zh-Hant` → Gemini Live WebSocket API（`aityping.bochibb.qzz.io/api/live-token`）
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2`）
@@ -52,6 +53,15 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-07 18:09 UTC — Cleanup mode re-run after cleanup (uiux)
+- frontend: npm run test -- --run src/test/app.test.tsx 29/29 ✅（新增 5 條 mode-change re-cleanup regression：標準 cleanup、semantic cleanup、recording 中不觸發、無 transcript 不觸發、失敗保留舊結果）
+- frontend: npm run typecheck ✅
+- frontend: npm run build ✅（tsc -b + vite build，PWA precache 6 entries）
+- 行為：cleanup 完成後切換整理模式會用 saved final raw transcript re-run `/api/cleanup` 或 `/api/smart-cleanup`；raw transcript 不變，不重錄、不觸發 STT
+- 未驗證：iPhone Safari 真機、public domain deploy 後 smoke test
+```
 
 ```text
 2026-07-06 12:14 PDT — 「柔和生活風」主畫面 UI 改版（uixi，layout-only）
