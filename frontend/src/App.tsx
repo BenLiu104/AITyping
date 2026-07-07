@@ -296,7 +296,7 @@ export default function App() {
     } catch (err: any) {
       if (runId !== cleanupRunIdRef.current) return;
       setErrorMsg(err.message || '整理失敗，請再試一次');
-    }
+    } finally {
       if (cleanupRunIdRef.current === runId) {
         setIsLoading(false);
       }
@@ -616,7 +616,7 @@ export default function App() {
     } catch (err: any) {
       if (runId !== cleanupRunIdRef.current) return;
       setErrorMsg(err.message || '整理失敗，請再試一次');
-    }
+    } finally {
       if (cleanupRunIdRef.current === runId) {
         setIsLoading(false);
       }
