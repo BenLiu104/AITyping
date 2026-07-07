@@ -9,7 +9,7 @@
 - **Branch**: `main`（`uixi` 已 merge，工作完成）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
-- **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)
+- **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` 或 `uixi` branch (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單已含兩者
 - **Current work**: UI 改版已 merge 入 `main`。下一步：其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
@@ -44,7 +44,7 @@
 | Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA 基本流程跑通 |
 | Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
 | Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
-| SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；Cloudflare Tunnel 直通；前端 ArrayBuffer fetch bypass Safari bug；CORS open |
+| SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；**執行路徑＝repo `sensevoice/`（venv + models 由 `setup.sh` 就地重建，可重現）**；Cloudflare Tunnel 直通；CORS open |
 | Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
 | Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
@@ -52,6 +52,18 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-06 20:12 PDT — SenseVoice 執行路徑遷移到 repo + 可重現部署工具鏈（commit 9e079bf）
+- 遷移：systemd unit WorkingDirectory/ExecStart 由 experiment/voice_test → repo sensevoice/；restart 後 NRestarts=0（無 crash loop）
+- /ping: {"model_loaded":true,"status":"ok"}，連續多次 stable；running process cwd=repo sensevoice/，用 repo venv/bin/python
+- WS end-to-end: /ws/transcribe-v2 connection opened→trace saved→closed 200；trace language=yue、chunk_count=34、total_bytes=32000（合成 sine 非語音故 final_count=0，屬正確）
+- setup.sh: fresh venv 建成 → 全 import OK；systemd-env smoke test model_loaded:true
+- fetch_models.py: 隔離 dogfood 由 ModelScope iic/*（pinned）下載 → sha256 7/7 OK
+- ad-hoc verify script: 25/25 PASS（setup.sh/requirements/models.sha256/template/live-service/ERRORS）
+- 保留：舊 experiment/voice_test/venv 未刪（2.1G，rollback 安全網）；unit backup .bak.pre-migrate 保留
+- 未驗證：iPhone Safari 真機經 CF tunnel 打 wss（本 session 無裝置）— 下次 Ben 真機順帶確認
+```
 
 ```text
 2026-07-06 12:14 PDT — 「柔和生活風」主畫面 UI 改版（uixi，layout-only）
@@ -134,6 +146,8 @@
 - **Safari Blob MIME type override**：fetch body 係 Blob 時，WebKit 用 Blob 的 `.type` 覆蓋 headers 的 `Content-Type`，觸發 preflight，preflight 對 binary MIME type 在 Safari 內部中斷。解法：用 `ArrayBuffer` 作 fetch body。
 - **Docker 容器內不能用 `localhost` 連 host**：要用 docker bridge gateway `172.19.0.1`。（現已不適用，proxy 已移除）
 - **iptables port 8082 ACCEPT 保留**：Oracle Cloud 預設 REJECT；已在 INPUT chain 第 5 位插入 ACCEPT，持久化。SenseVoice 現在由 Cloudflare Tunnel 直接服務，iptables rule 對此路徑無影響，但留著對未來 Docker 容器有用。
+- **SenseVoice venv 不可搬移（redeploy 必讀）**：venv `bin/` 內 script（pip 等）shebang 寫死絕對路徑，`mv`／`cp -r` 去新路徑即壞（exec pip → `FileNotFoundError`，funasr 載模型時 self-`pip install` 撞正 → crash loop `status=6/ABRT`）。**換路徑＝喺新路徑重跑 `sensevoice/setup.sh` 重建**，切勿搬 venv。詳見 `sensevoice/DEPLOY.md` §6 + `ERRORS.md`。
+- **SenseVoice 模型 = ModelScope submodule，pip-from-git 唔會落**：`pip install git+...` 攞到嘅 `model_quant.onnx` 係細指標檔（非真權重）→ onnxruntime `InvalidProtobuf`。`setup.sh` 會自動跑 `fetch_models.py` 由 ModelScope `iic/*`（pinned revision）下載，`models.sha256` 把關。
 - **pydantic-settings `.env` 優先**：`.env` 永遠覆蓋 class default。改 CORS / config 後必查 production `.env`。
 - **Do not re-add Docker cloudflared connector**：Tunnel 用 host systemd `cloudflared.service`。
 - **Do not use MediaRecorder**：Live API 依賴 AudioWorklet raw PCM。
