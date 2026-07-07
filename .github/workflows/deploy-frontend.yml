@@ -47,9 +47,16 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ] || [ -z "$VITE_SENSEVOICE_WS_URL" ]; then
+            echo "::error::Missing repo variables VITE_API_BASE_URL / VITE_SENSEVOICE_WS_URL (Settings → Actions → Variables)."
+            exit 1
+          fi
+          npm run build
         env:
-          VITE_API_BASE_URL: https://aityping.bochibb.qzz.io
+          # Public-facing endpoints — injected via repo variables (Settings → Actions → Variables).
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_SENSEVOICE_WS_URL: ${{ vars.VITE_SENSEVOICE_WS_URL }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
 
-    # CORS 跨域設定
+    # CORS 跨域設定（生產 domain 由 .env 的 ALLOWED_ORIGINS 提供；此處只留 local dev 預設）
     ALLOWED_ORIGINS: Union[str, List[str]] = [
-        "https://aityping.bochibb.qzz.io",
-        "https://benliu104.github.io",
+        "http://localhost:5173",
+        "http://localhost:4173",
     ]
 
     # 開發輔助

@@ -9,7 +9,7 @@
  */
 
 export interface SenseVoiceWsClientConfig {
-  wsUrl: string;          // e.g. wss://sencevoice.bochibb.qzz.io/ws/transcribe
+  wsUrl: string;          // e.g. wss://your-sensevoice-host/ws/transcribe-v2
   language: string;       // 'yue' | 'zh' | 'auto'
   sampleRate?: number;    // PCM sample rate from AudioWorklet (default 16000)
   onTranscription: (text: string, isFinal: boolean) => void;

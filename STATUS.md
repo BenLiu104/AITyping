@@ -8,8 +8,8 @@
 - **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版已完成、deploy、Ben 確認「效果都 ok」，已 merge 入 `main`
 - **Branch**: `main`（`uixi` 已 merge，工作完成）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
-- **Backend API**: `https://aityping.bochibb.qzz.io` (VPS Docker, Cloudflare Tunnel)
-- **SenseVoice API**: `https://sencevoice.bochibb.qzz.io` (VPS host systemd, Cloudflare Tunnel, port 8082)
+- **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
+- **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` 或 `uixi` branch (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單已含兩者
 - **Current work**: UI 改版已 merge 入 `main`。下一步：其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
@@ -26,14 +26,14 @@
   - Smart Cleanup 只喺 stop 後、final transcript 非空時觸發一次；interim transcript 不觸發；空 transcript 不觸發（沿用既有「stop 後才呼叫 cleanup」時序，免費繼承這條 acceptance criteria）。
   - Smart Cleanup 失敗時不影響 raw transcript：錯誤訊息走既有 `errorMsg` state 顯示，cleanup 輸出欄位維持空白，不 crash。
 - **Language routing（本地工作樹）**：
-  - `en` / `zh-Hant` → Gemini Live WebSocket API（`aityping.bochibb.qzz.io/api/live-token`）
-  - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2`）
+  - `en` / `zh-Hant` → Gemini Live WebSocket API（`<backend-domain>/api/live-token`）
+  - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://<sensevoice-domain>/ws/transcribe-v2`）
 - SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
 - Live transcript panel 現在顯示 `final + interim`，避免第一句 finalized 後把第二句 partial 完全遮住。
 - SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
 - SenseVoice WS client 現在把 iPhone AudioWorklet 的極細 PCM frames 聚合成約 100ms / 3200 bytes 才送出，停止時會先 flush 剩餘 audio 再送 `END`，debug row 顯示 `end` / `ack` 用嚟確認 backend finalize handshake。
-- **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `bochibb.qzz.io` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
+- **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `<your-domain>` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
 - 舊 `/ws/transcribe` silence-segmentation route 仍保留，方便回退；但本地新路徑已改用 `/ws/transcribe-v2`。
 - **主畫面 UI（`uixi` 本地工作樹，未 deploy）**：改為「柔和生活風」— 暖米白背景、綠色 accent、白色圓角卡片。整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐（native `<select>`，`aria-label` = 整理模式 / 語言模式）；預設整理模式改為 `semantic`（智能整理）。Settings gear 只剩 mock + haptics 兩個 toggle。即時聽寫卡加錄音計時器（`mm:ss`）；智能整理結果卡的複製 / 清除為卡內右上角小 icon。底部：中央綠色 mic 大按鈕（唯一 tap-to-toggle 錄音控制）+ 右側「歷史紀錄」按鈕（點擊只彈「歷史紀錄即將推出」placeholder，無儲存邏輯）。debug 遙測列改為只在 `import.meta.env.DEV` 顯示（`vite build` production bundle 已剝除，Vitest 下仍在故 `end=1 ack=1` regression 續綠）。所有錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 
@@ -117,7 +117,7 @@
 - public bundle contains `v12:19` + `/ws/transcribe-v2` ✅
 - voice_test: python -m unittest tests.test_ws_v2 -v ✅
 - ad-hoc smoke: local ws://127.0.0.1:8082/ws/transcribe-v2 ✅
-- ad-hoc smoke: public wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2 ✅
+- ad-hoc smoke: public wss://<sensevoice-domain>/ws/transcribe-v2 ✅
 - WS evidence: partial_count=11, final_count=1, last_final="呢幾個字都表達唔到，我想講嘅意思。" ✅
 ```
 
@@ -130,7 +130,7 @@
 
 ## 5. High-Signal Pitfalls
 
-- **NordVPN / VPN block**：NordVPN 在 iOS 系統層攔截所有出站 DNS。`bochibb.qzz.io` 被 Threat Protection 判為可疑，DNS resolve 失敗 → fetch `Load failed`。診斷時必查後端 log 有冇收到請求；零請求即代表手機本地中斷，跟 CORS / Content-Type 無關。
+- **NordVPN / VPN block**：NordVPN 在 iOS 系統層攔截所有出站 DNS。`<your-domain>` 被 Threat Protection 判為可疑，DNS resolve 失敗 → fetch `Load failed`。診斷時必查後端 log 有冇收到請求；零請求即代表手機本地中斷，跟 CORS / Content-Type 無關。
 - **Safari Blob MIME type override**：fetch body 係 Blob 時，WebKit 用 Blob 的 `.type` 覆蓋 headers 的 `Content-Type`，觸發 preflight，preflight 對 binary MIME type 在 Safari 內部中斷。解法：用 `ArrayBuffer` 作 fetch body。
 - **Docker 容器內不能用 `localhost` 連 host**：要用 docker bridge gateway `172.19.0.1`。（現已不適用，proxy 已移除）
 - **iptables port 8082 ACCEPT 保留**：Oracle Cloud 預設 REJECT；已在 INPUT chain 第 5 位插入 ACCEPT，持久化。SenseVoice 現在由 Cloudflare Tunnel 直接服務，iptables rule 對此路徑無影響，但留著對未來 Docker 容器有用。

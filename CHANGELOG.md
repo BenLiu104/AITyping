@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Security
+- Public-repo hygiene：從 tracked tree 移除 origin VPS IP（`<VPS_IP>` 佔位）、絕對 home 路徑（`<INSTALL_DIR>` / `<DEPLOY_USER>`）、及可識別的服務 domain（`<backend-domain>` / `<sensevoice-domain>`）。VPS IP 屬真實洩露（架構本應以 Cloudflare Tunnel 隱藏 origin），domain 則為降低 fork 耦合。註：僅清理當前 tree，git 歷史舊 commit 仍含舊值（未做 history rewrite）。
+- 前端不再 hardcode 後端 / SenseVoice endpoint：`VITE_API_BASE_URL` 與新增 `VITE_SENSEVOICE_WS_URL` 於 build time 由 GitHub Actions repo variables 注入（deploy workflow 缺變數即 fail-fast，不再 fallback 到寫死 domain）。local dev 未設變數時 SenseVoice WS fallback 到同源 `/ws/transcribe-v2`。
+- 後端 CORS `ALLOWED_ORIGINS` code 預設值由 production domain 改為 `localhost`（生產 origin 一律由 `.env` 提供）。
+
 ### Added
 - 主畫面「柔和生活風」UI 改版（layout-only）：暖米白背景 + 綠色 accent + 白色圓角卡片；整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐；即時聽寫卡新增錄音計時器（`mm:ss`）；底部新增「歷史紀錄」按鈕（placeholder，點擊彈「歷史紀錄即將推出」modal，尚無真實 history 儲存邏輯）。錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 - `POST /api/smart-cleanup`：`semantic` cleanup mode MVP1（Smart Cleanup）— 對停止錄音後嘅完整最終逐字稿做語義層整理，推斷用戶最終真正想講嘅意思（處理猶豫、自我修正、改變主意），非純文法修正。回應 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只顯示 `clean_text`，寫入既有 cleanup 輸出欄位。
@@ -80,8 +85,8 @@
 ## [0.3.1] - 2026-06-30
 
 ### Changed
-- **架構重構**：移除 AITyping backend 的 `/api/transcribe` proxy route。SenseVoice STT 現由前端直接呼叫 `https://sencevoice.bochibb.qzz.io/transcribe`，各服務各司其職。
-- `frontend/src/App.tsx`：`SenseVoiceClient.apiUrl` 從 `aityping.bochibb.qzz.io/api` 改為 `sencevoice.bochibb.qzz.io`。
+- **架構重構**：移除 AITyping backend 的 `/api/transcribe` proxy route。SenseVoice STT 現由前端直接呼叫 `https://<sensevoice-domain>/transcribe`，各服務各司其職。
+- `frontend/src/App.tsx`：`SenseVoiceClient.apiUrl` 從 `<backend-domain>/api` 改為 `<sensevoice-domain>`。
 - `backend/app/main.py`：移除 `transcribe_router` import 及註冊。
 - 刪除 `backend/app/routes/transcribe.py`。
 

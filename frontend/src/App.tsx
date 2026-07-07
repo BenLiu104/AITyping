@@ -10,6 +10,14 @@ const BUILD_LABEL = 'v01:35';
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
+// SenseVoice WebSocket endpoint（廣東話 STT）。由 build-time env 注入，
+// 未設定時 fallback 去同源 /ws（local dev 用）。
+const SENSEVOICE_WS_URL =
+  import.meta.env.VITE_SENSEVOICE_WS_URL ||
+  (typeof window !== 'undefined'
+    ? `${window.location.origin.replace(/^http/, 'ws')}/ws/transcribe-v2`
+    : '');
+
 const getSpeechProfile = (language: Language): SpeechProfile => {
   if (language === 'mixed') return 'cantonese-english';
   if (language === 'yue') return 'cantonese';
@@ -384,7 +392,7 @@ export default function App() {
         inputSampleRate = audioContext.sampleRate;
 
         client = new SenseVoiceWsClient({
-          wsUrl: 'wss://sencevoice.bochibb.qzz.io/ws/transcribe-v2',
+          wsUrl: SENSEVOICE_WS_URL,
           language: getSenseVoiceLanguage(language),
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });

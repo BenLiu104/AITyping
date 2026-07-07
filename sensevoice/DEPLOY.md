@@ -3,7 +3,7 @@
 > 廣東話語音轉文字 API，基於阿里 FunAudioLLM SenseVoiceSmall + `sense-voice-streaming-asr`
 > streaming wrapper。跑喺 VPS ARM64 CPU，**host systemd（唔係 Docker）**。
 >
-> - **Public**: `https://sencevoice.bochibb.qzz.io`（Cloudflare Tunnel）
+> - **Public**: `https://<sensevoice-domain>`（Cloudflare Tunnel）
 > - **Internal**: `http://<vps>:8082`
 > - **Service**: `sensevoice-api.service`
 > - **API 教學**: 見 `README.md`
