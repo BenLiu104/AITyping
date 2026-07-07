@@ -294,8 +294,9 @@ export default function App() {
       setLastCleanedMode(targetMode);
       setLastCleanedLanguage(targetLanguage);
     } catch (err: any) {
+      if (runId !== cleanupRunIdRef.current) return;
       setErrorMsg(err.message || '整理失敗，請再試一次');
-    } finally {
+    }
       if (cleanupRunIdRef.current === runId) {
         setIsLoading(false);
       }
@@ -613,8 +614,9 @@ export default function App() {
       setLastCleanedMode(targetMode);
       setLastCleanedLanguage(targetLanguage);
     } catch (err: any) {
+      if (runId !== cleanupRunIdRef.current) return;
       setErrorMsg(err.message || '整理失敗，請再試一次');
-    } finally {
+    }
       if (cleanupRunIdRef.current === runId) {
         setIsLoading(false);
       }
@@ -647,6 +649,7 @@ export default function App() {
     setCleanupSourceTranscript('');
     setLastCleanedMode(null);
     setLastCleanedLanguage(null);
+    setIsLoading(false);
     cleanupRunIdRef.current++;
     setLiveStatus('');
     resetDebugSnapshot();
@@ -680,6 +683,7 @@ export default function App() {
     setCleanupSourceTranscript('');
     setLastCleanedMode(null);
     setLastCleanedLanguage(null);
+    setIsLoading(false);
     cleanupRunIdRef.current++;
     setErrorMsg('');
     setLiveStatus('');
