@@ -1,0 +1,16 @@
+# SenseVoice model integrity manifest
+# sha256 of the ONNX models + companion files the streaming wrapper loads
+# from inside sense_voice_streaming_asr/models/.
+#
+# 用途：setup.sh 用呢個核對模型檔係「真權重」而非 Git LFS 指標檔（134B）。
+# 來源：SenseVoiceSmall = ModelScope iic/SenseVoiceSmall-onnx（HF 有鏡像）;
+#       FSMN-VAD = ModelScope iic/speech_fsmn_vad_zh-cn-16k-common-onnx。
+# 路徑相對 sense_voice_streaming_asr/models/。
+
+29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5  SenseVoiceSmall/am.mvn
+c57f6a580d63f7465c6a22ba95847aee05a1ae1181f5abddffb943d9febda061  SenseVoiceSmall/configuration.json
+21dc965f689a78d1604717bf561e40d5a236087c85a95584567835750549e822  SenseVoiceSmall/model_quant.onnx
+a2594fc1474e78973149cba8cd1f603ebed8c39c7decb470631f66e70ce58e97  SenseVoiceSmall/tokens.json
+6820fef9687708c4fc3fab2530179c8fcea6262daa25514380056cd8f6eb1754  speech_fsmn_vad_zh-cn-16k-common-onnx/am.mvn
+f62fcbcebbaade798714b34c521cad87d869ee6a327ceed948e01ff2336bbfc0  speech_fsmn_vad_zh-cn-16k-common-onnx/configuration.json
+5289eb2aa3c9af2d7a4284bcfa7c3ceb81d360814ed4203239b6c5d0569da8a1  speech_fsmn_vad_zh-cn-16k-common-onnx/model_quant.onnx

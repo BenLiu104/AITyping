@@ -1,6 +1,10 @@
 # SenseVoice Cantonese STT API — runtime dependencies
-# 對應 systemd sensevoice-api.service（VPS ARM64 CPU）。
-# 由 SenseVoice service venv 抽取 direct import 並鎖定版本。
+#
+# 目標：可重現部署（fresh box / 開源 clone）。用 sensevoice/setup.sh 安裝，
+# 或手動：python3.11 -m venv venv && venv/bin/pip install -r requirements.txt \
+#         --extra-index-url https://download.pytorch.org/whl/cpu
+#
+# 環境：Python 3.11、Linux（VPS 為 ARM64 / aarch64，CPU-only 推論）。
 
 # ── Web / WebSocket ──────────────────────────────
 Flask==3.1.3
@@ -8,10 +12,17 @@ flask-cors==6.0.5
 flask-sock==0.7.0
 simple-websocket==1.1.0
 
+# ── PyTorch（CPU）──────────────────────────────────
+# funasr 載入 FSMN-VAD + SenseVoiceSmall (.pt) 需要 torch。
+# CPU wheel 由 setup.sh 的 --extra-index-url https://download.pytorch.org/whl/cpu 提供。
+torch==2.12.1
+torchaudio==2.11.0
+
 # ── ASR runtime ──────────────────────────────────
-# streaming SenseVoice wrapper（帶 kaldi_native_fbank / onnxruntime / sounddevice）
-sense-voice-streaming-asr==0.2.3
-funasr==1.3.14                       # FSMN-VAD 模型載入
+# streaming SenseVoice wrapper：非 PyPI 套件，須由 git 安裝並鎖 commit。
+# 只依賴 kaldi_native_fbank / onnxruntime / sounddevice（ONNX 推論，供 WS v2 streaming）。
+sense-voice-streaming-asr @ git+https://github.com/nikoseven/sense-voice-streaming-asr.git@fc75534f89ce880f0730954d1621757a62b30835
+funasr==1.3.14                       # FSMN-VAD + SenseVoiceSmall 模型載入（file 轉錄路徑）
 
 # ── 音訊處理 ──────────────────────────────────────
 librosa==0.11.0
@@ -19,4 +30,4 @@ soundfile==0.14.0
 numpy==1.26.4
 
 # ── 中文轉換 ──────────────────────────────────────
-opencc-python-reimplemented==0.1.7   # 簡→繁（s2t）
+opencc-python-reimplemented==0.1.7   # 提供 `from opencc import OpenCC`，簡→繁（s2t）

@@ -1,0 +1,30 @@
+# SenseVoice Cantonese STT API — systemd unit template
+#
+# 可移植部署範本。__INSTALL_DIR__ / __RUN_USER__ 為佔位符，安裝時替換。
+#
+# 安裝步驟：
+#   1. 於目標路徑 clone repo，進入 sensevoice/ 執行 ./setup.sh 建立 venv
+#   2. 產生實際 unit（把佔位符換成真實值）：
+#        sed -e "s#__INSTALL_DIR__#$(pwd)#g" -e "s#__RUN_USER__#$(whoami)#g" \
+#            sensevoice-api.service.template | sudo tee /etc/systemd/system/sensevoice-api.service
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now sensevoice-api
+#   4. 驗證：curl -s http://127.0.0.1:8082/ping   # 期望 {"model_loaded":true,"status":"ok"}
+#
+# 注意：venv 不可搬移。若換路徑，於新路徑重跑 setup.sh 再重新產生 unit。
+
+[Unit]
+Description=SenseVoice Cantonese STT API
+After=network.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/venv/bin/python __INSTALL_DIR__/api.py --preload --port 8082
+Restart=always
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=__INSTALL_DIR__/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
