@@ -10,9 +10,9 @@
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
-- **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。注意：cleanup mode re-run UX 剛 merge，未經真機 / public domain 驗收。
+- **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
-- **Current work**: UI 改版 + cleanup mode re-run 已 merge 入 `main`。下一步：真機 / public domain 驗收 cleanup re-run；其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
+- **Current work**: UI 改版 + cleanup mode re-run 已 merge 入 `main` 並真機驗收通過。下一步：**加 app icon**（PWA / Home Screen icon）；其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）待續。
 
 ## 2. Current Product Behavior
 
@@ -168,14 +168,19 @@
 
 1. **UI 改版（✅ 完成並 merge 入 `main`）**
    - 「柔和生活風」主畫面已 deploy、Ben 確認「效果都 ok」，`uixi` → `main` merge 完成；plan 見 `UI_change.md`
+   - cleanup mode re-run UX 已 merge 並真機驗收通過（轉 mode 可流暢改變 cleanup 結果）
    - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
-2. **Phase 2 收尾觀察**
+2. **加 app icon（👈 下一步要做）**
+   - PWA / iOS Home Screen icon（目前應為預設 / 缺失）；配合「柔和生活風」暖米白 `#FFF9EF` + 綠 accent 配色
+   - 涉及 `frontend/public/` icon 資產 + manifest（`vite.config.ts` PWA `icons`）；注意 iOS `apple-touch-icon`
+
+3. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt
    - SenseVoice v2（`v01:35`）持續觀察中；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
    - 舊 `/ws/transcribe` route 保留作回退
 
-3. **Phase 3 準備（⏭️ 之後）**
+4. **Phase 3 準備（⏭️ 之後）**
    - Rate limiting
    - Token endpoint access policy / auth
    - Better offline / mic denied / API failure UX
