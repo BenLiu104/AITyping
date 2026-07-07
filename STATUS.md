@@ -5,14 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版已完成、deploy、Ben 確認「效果都 ok」，已 merge 入 `main`
-- **Branch**: `main`（`uixi` 已 merge，工作完成）
+- **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版 + cleanup mode re-run UX 已完成並 merge 入 `main`；UI 改版 Ben 已確認「效果都 ok」
+- **Branch**: `main`（`uixi` 已 merge）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
-- **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」
-- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` 或 `uixi` branch (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單已含兩者
-- **Current work**: UI 改版已 merge 入 `main`。下一步：其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
+- **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。注意：cleanup mode re-run UX 剛 merge，未經真機 / public domain 驗收。
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
+- **Current work**: UI 改版 + cleanup mode re-run 已 merge 入 `main`。下一步：真機 / public domain 驗收 cleanup re-run；其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）。
 
 ## 2. Current Product Behavior
 
@@ -25,6 +25,7 @@
   - `semantic` → `POST /api/smart-cleanup`，回傳 `{ clean_text, intent_status, reasoning_summary, confidence }`；前端只取 `clean_text` 寫入同一個 cleanup 欄位（其餘 metadata MVP1 不顯示，留 debug/未來用）。兩個 endpoint 互斥，不會並行呼叫。
   - Smart Cleanup 只喺 stop 後、final transcript 非空時觸發一次；interim transcript 不觸發；空 transcript 不觸發（沿用既有「stop 後才呼叫 cleanup」時序，免費繼承這條 acceptance criteria）。
   - Smart Cleanup 失敗時不影響 raw transcript：錯誤訊息走既有 `errorMsg` state 顯示，cleanup 輸出欄位維持空白，不 crash。
+  - Cleanup mode can now be changed after cleanup; frontend reuses saved final transcript and re-runs the appropriate cleanup endpoint. Re-cleanup 只替換 cleaned result，不修改 raw transcript、不重錄、不重跑 STT；失敗時保留舊 cleaned result 並顯示 non-blocking error。
 - **Language routing（本地工作樹）**：
   - `en` / `zh-Hant` → Gemini Live WebSocket API（`<backend-domain>/api/live-token`）
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://<sensevoice-domain>/ws/transcribe-v2`）
@@ -52,6 +53,15 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-07 18:09 UTC — Cleanup mode re-run after cleanup (merged uixi → main)
+- frontend: npm run test -- --run src/test/app.test.tsx 29/29 ✅（新增 5 條 mode-change re-cleanup regression：標準 cleanup、semantic cleanup、recording 中不觸發、無 transcript 不觸發、失敗保留舊結果）
+- frontend: npm run typecheck ✅
+- frontend: npm run build ✅（tsc -b + vite build，PWA precache 6 entries）
+- 行為：cleanup 完成後切換整理模式會用 saved final raw transcript re-run `/api/cleanup` 或 `/api/smart-cleanup`；raw transcript 不變，不重錄、不觸發 STT
+- 未驗證：iPhone Safari 真機、public domain deploy 後 smoke test
+```
 
 ```text
 2026-07-06 20:12 PDT — SenseVoice 執行路徑遷移到 repo + 可重現部署工具鏈（commit 9e079bf）

@@ -8,6 +8,8 @@
 
 ### Added
 - SenseVoice STT 可重現部署工具鏈（開源 / redeploy 前提）：`sensevoice/setup.sh` 一鍵就地建 venv + 裝依賴 + 取模型 + sha256 把關；`sensevoice/fetch_models.py` 由 ModelScope 官方 `iic/*`（pinned revision）下載 streaming ONNX 權重並 copy 入 package；`sensevoice/models.sha256`（7 檔）做完整性 manifest；`sensevoice/sensevoice-api.service.template`（`__INSTALL_DIR__` / `__RUN_USER__` 佔位符）做 infra-as-code。`requirements.txt` 修正為真正可安裝：`sense-voice-streaming-asr` 改用 git+commit pin（非 PyPI，會 404）、補回 `torch` / `torchaudio` CPU wheel。`DEPLOY.md` §2/§3/§6 重寫對齊新流程。
+- GitHub Pages frontend deploy workflow now also triggers on `uiux` branch pushes.
+- Cleanup mode re-run UX：停止錄音並完成整理後，使用者可切換整理模式，前端會保留同一份 final raw transcript 並重新呼叫對應 cleanup endpoint（標準模式 `/api/cleanup`、智能整理 `/api/smart-cleanup`），只替換整理結果，不重錄、不重跑 STT；re-cleanup 失敗時保留原逐字稿與舊整理結果。
 
 ### Security
 - Public-repo hygiene：從 tracked tree 移除 origin VPS IP（`<VPS_IP>` 佔位）、絕對 home 路徑（`<INSTALL_DIR>` / `<DEPLOY_USER>`）、及可識別的服務 domain（`<backend-domain>` / `<sensevoice-domain>`）。VPS IP 屬真實洩露（架構本應以 Cloudflare Tunnel 隱藏 origin），domain 則為降低 fork 耦合。註：僅清理當前 tree，git 歷史舊 commit 仍含舊值（未做 history rewrite）。
