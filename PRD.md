@@ -74,7 +74,7 @@ iPhone Safari (PWA)
 ## 6. API 合約
 
 ### 6.1 `POST /api/live-token`
-**Request:** `{}`（MVP 無需參數；Phase 3 加 auth）
+**Request:** query 參數 `?profile=<english|cantonese|cantonese-english|auto>`（optional，預設通用逐字轉錄；未知值一律 fallback；`?ttl=<秒>` optional）。Phase 3 加 auth。
 **Response 200:**
 ```json
 {
@@ -83,9 +83,9 @@ iPhone Safari (PWA)
   "model": "models/gemini-3.1-flash-live-preview"
 }
 ```
-- 目標設計：token 短效（建議 ≤ 10 分鐘 / 單次 session）。
-- 現實 fallback：Google AI Studio key / SDK 若不可簽 ephemeral token，backend adapter 可回傳 direct-key Live connection config；此 fallback 必須集中在 `backend/app/gemini/` adapter，不得散落 route handler。
-- 失敗 → `500 { "error": "..." }`。
+- token 短效（≤ 10 分鐘 / 單次 session）；只回傳 backend-created ephemeral token，**不再** fallback 回傳 raw key（見 security fix）。
+- ★ **Constrained endpoint 合約**：`v1alpha` `BidiGenerateContentConstrained` WS 會拒絕 client 送出的任何 setup 內容（連空 `{}`）。故完整 setup（`responseModalities` / `inputAudioTranscription` / `systemInstruction`，含依 `profile` 而定的轉錄語言指令）必須在簽發 token 時鎖入 `live_connect_constraints.config`；前端 WS 只送空 `{ setup: {} }` frame 觸發 `setupComplete`。此鎖定邏輯集中在 `backend/app/gemini/adapter.py`，不得散落 route handler。
+- 失敗 → fail closed：`503 { "detail": "..." }`（安全訊息，不回顯 SDK error / key）。
 
 ### 6.2 `POST /api/cleanup`
 **Request:**

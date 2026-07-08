@@ -275,13 +275,14 @@ describe('App Component Core UI Tests', () => {
     expect(senseVoiceClientMockState.latestConfig.language).toBe('yue')
   })
 
-  it('passes English speech profile to LiveClient when language is English', async () => {
+  it('requests an English-profile ephemeral token when language is English', async () => {
     mockBrowserAudioPipeline()
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ token: 'test-token', model: 'models/gemini-3.1-flash-live-preview' }),
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
 
@@ -300,7 +301,13 @@ describe('App Component Core UI Tests', () => {
       await flushPromises()
     })
 
-    expect(liveClientMockState.latestConfig.speechProfile).toBe('english')
+    // The transcription systemInstruction is now locked into the ephemeral token
+    // server-side, so the language profile travels on the token request query
+    // (not on the LiveClient setup frame).
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/live-token?profile=english',
+      { method: 'POST' },
+    )
   })
 
   it('shows a safe error when Gemini Live token creation fails without frontend key fallback', async () => {
@@ -327,7 +334,7 @@ describe('App Component Core UI Tests', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalledWith('/api/live-token', { method: 'POST' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/live-token?profile=english', { method: 'POST' })
     expect(liveClientMockState.latestClient).toBeUndefined()
     expect(screen.getByText('無法建立 Gemini Live 安全連線，請稍後再試')).toBeInTheDocument()
     expect(screen.queryByText(/unsafe backend detail/i)).not.toBeInTheDocument()
@@ -579,7 +586,7 @@ describe('App Component Core UI Tests', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock).toHaveBeenCalledWith('/api/live-token', { method: 'POST' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/live-token?profile=english', { method: 'POST' })
     const debugCall = fetchMock.mock.calls.find(([url]) => url === '/api/debug-event')
     expect(debugCall).toBeTruthy()
     const debugBody = JSON.parse(debugCall![1].body as string)

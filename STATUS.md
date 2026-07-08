@@ -12,7 +12,7 @@
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
-- **Current work**: 兩條 feature 已在本地完成並併入此 branch（`uixi` merge `uiux`）：(1) **Gemini Live API key exposure fix** —— `/api/live-token` 不再 fallback 回傳 raw `GEMINI_API_KEY`，改為要求 backend-created ephemeral token，不可用時 fail closed（含 TTL validation）；(2) **app icon 全套** —— PWA / Home Screen icon 全套已加 + 修 `vite.config.ts` manifest icon 引用 bug。下一步：真機驗收 app icon（iOS Home Screen 裝一次睇效果）；其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）待續。
+- **Current work**: **Gemini Live 1011 regression 修好並已部署 backend** —— constrained endpoint（`v1alpha` `BidiGenerateContentConstrained`）拒絕 client 送出的任何 setup，正解是把完整 setup（含依 `profile` 的轉錄語言指令）鎖入 ephemeral token 的 `live_connect_constraints.config`，前端只送空 `{setup:{}}`。`/api/live-token` 加 optional `?profile=` 參數；轉錄語言指令由前端搬到後端集中管理。Backend 已 `docker compose up -d --build` 部署並四閘驗證通過（route 端到端 setupComplete）。**下一步：push `uiux` → 觸發 GitHub Pages CI build frontend → Ben iPhone 真機驗 en / 繁中 Live 聽寫。**
 
 ## 2. Current Product Behavior
 
@@ -46,13 +46,23 @@
 | Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
 | Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；**執行路徑＝repo `sensevoice/`（venv + models 由 `setup.sh` 就地重建，可重現）**；Cloudflare Tunnel 直通；CORS open |
-| Gemini Live | ✅ Done | `v1alpha` constrained WS + backend ephemeral token、`AUDIO` modality、`inputAudioTranscription`、Blob message decode；`/api/live-token` fail closed，不再回傳 raw API key |
+| Gemini Live | ✅ Done | `v1alpha` constrained WS + backend ephemeral token、`AUDIO` modality、`inputAudioTranscription`、Blob message decode；`/api/live-token` fail closed，不再回傳 raw API key。★ 完整 setup（含依 `?profile=` 的轉錄語言指令）鎖入 token `live_connect_constraints.config`，前端只送空 `{setup:{}}`（修 constrained endpoint 拒 client setup 的 1011 regression，route 端到端實測 setupComplete）|
 | Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
 | Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；「柔和生活風」主畫面 UI 改版本地完成（layout-only，tests/typecheck/build 全綠，未 deploy / 未真機驗收）；其餘 Phase 2 gates（history 真實功能、debug counters 顯示規則等）待續 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-08 15:00 PDT — Gemini Live 1011 regression 修好（constrained endpoint setup 鎖入 token）
+- 根因：v1alpha BidiGenerateContentConstrained WS 拒絕 client 送出的任何 setup（連空 {} 亦 1011）。正解＝完整 setup 鎖入 ephemeral token 的 live_connect_constraints.config，前端只送空 {setup:{}}。
+- backend（container 內）: python -m pytest 32/32 ✅（新增 profile route forward / unknown-profile normalize / 5 條 parametrized instruction-by-profile）; ruff check ✅
+- frontend canonical: typecheck ✅ / oxlint 0 warn ✅ / vitest 48/48 ✅（刪 1 條過時 client-side systemInstruction test）/ build ✅（PWA precache 13 entries）
+- ★ 端到端實測（真 Google endpoint，經真 /api/live-token route）：english / cantonese-english / auto profile 全部回 setupComplete ✅（rebuild 前同一 route 1011，rebuild 後 setupComplete＝新 code 已上線鐵證）
+- backend 部署：docker compose up -d --build backend → 四閘全通（container Up:8000 / startup complete 無 traceback / GET /health 200 / route setupComplete）
+- 未驗證：iPhone Safari 真機 en / 繁中 Live 聽寫（待 frontend CI deploy 後 Ben 真機）
+```
 
 ```text
 2026-07-08 11:05 PDT — Gemini Live raw API key fallback removed

@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
+
+### Added
+- `/api/live-token` 新增 optional `profile` query 參數（`english` / `cantonese` / `cantonese-english` / `auto`）：後端 `GeminiAdapter._build_transcription_instruction()` 依 profile 組出對應轉錄 system instruction 並鎖入 token。轉錄語言指令（如「Never output Japanese kana」防日文誤判、保留 English 技術詞）由前端搬到後端集中管理；未知 / 缺省 profile 一律 fallback 到通用逐字轉錄指令。前端取 token 時依語言模式帶上 `?profile=`。
+
 ### Added
 - SenseVoice STT 可重現部署工具鏈（開源 / redeploy 前提）：`sensevoice/setup.sh` 一鍵就地建 venv + 裝依賴 + 取模型 + sha256 把關；`sensevoice/fetch_models.py` 由 ModelScope 官方 `iic/*`（pinned revision）下載 streaming ONNX 權重並 copy 入 package；`sensevoice/models.sha256`（7 檔）做完整性 manifest；`sensevoice/sensevoice-api.service.template`（`__INSTALL_DIR__` / `__RUN_USER__` 佔位符）做 infra-as-code。`requirements.txt` 修正為真正可安裝：`sense-voice-streaming-asr` 改用 git+commit pin（非 PyPI，會 404）、補回 `torch` / `torchaudio` CPU wheel。`DEPLOY.md` §2/§3/§6 重寫對齊新流程。
 - GitHub Pages frontend deploy workflow now also triggers on `uiux` branch pushes.

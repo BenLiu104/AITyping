@@ -32,11 +32,24 @@ class TokenResponse(BaseModel):
 @router.post("/live-token", response_model=TokenResponse, tags=["Gemini"])
 async def get_live_token(
     ttl: Optional[int] = Query(default=None, ge=1),
+    profile: Optional[str] = Query(
+        default=None,
+        description="轉錄語言 profile：english / cantonese / cantonese-english / auto",
+    ),
     adapter: GeminiAdapter = Depends(get_gemini_adapter),
 ):
-    """簽發用於前端瀏覽器直連 Gemini Live API WebSocket 的短效 Ephemeral Token"""
+    """簽發用於前端瀏覽器直連 Gemini Live API WebSocket 的短效 Ephemeral Token
+
+    profile 依前端語言模式將對應轉錄指令鎖入 token 的 live_connect_constraints；
+    未知或缺省的 profile 一律回退為通用轉錄指令（不 fail）。
+    """
+    normalized_profile = (
+        profile if profile in GeminiAdapter.LIVE_SPEECH_PROFILES else None
+    )
     try:
-        token_data = await adapter.generate_ephemeral_token(ttl_seconds=ttl)
+        token_data = await adapter.generate_ephemeral_token(
+            ttl_seconds=ttl, profile=normalized_profile
+        )
         return TokenResponse(
             token=token_data["token"],
             expiresAt=token_data["expiresAt"],

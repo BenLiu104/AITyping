@@ -48,7 +48,9 @@ async def test_generate_ephemeral_token_uses_auth_tokens_create(monkeypatch):
     adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
     adapter.mock_mode = False
 
-    result = await adapter.generate_ephemeral_token(ttl_seconds=3600)
+    result = await adapter.generate_ephemeral_token(
+        ttl_seconds=3600, profile="english"
+    )
 
     assert result["token"] == "auth_tokens/test-ephemeral-token"
     assert result["token"] != "real-backend-api-key"
@@ -57,9 +59,48 @@ async def test_generate_ephemeral_token_uses_auth_tokens_create(monkeypatch):
     assert captured["http_options"] == {"api_version": "v1alpha"}
     assert captured["config"]["uses"] == 1
     assert captured["config"]["http_options"] == {"api_version": "v1alpha"}
-    assert captured["config"]["live_connect_constraints"] == {
-        "model": "models/gemini-3.1-flash-live-preview"
-    }
+    # Constrained endpoint ignores client-sent setup, so model + full setup
+    # (responseModalities / inputAudioTranscription / systemInstruction) must be
+    # locked into the token at mint time.
+    constraints = captured["config"]["live_connect_constraints"]
+    assert constraints["model"] == "models/gemini-3.1-flash-live-preview"
+    cfg = constraints["config"]
+    assert cfg["responseModalities"] == ["AUDIO"]
+    assert cfg["inputAudioTranscription"] == {}
+    instruction = cfg["systemInstruction"]["parts"][0]["text"]
+    assert "Transcribe" in instruction
+    # english profile hint locked into the token's system instruction
+    assert "The user speaks English" in instruction
+
+
+@pytest.mark.parametrize(
+    "profile,expected_snippets,absent_snippets",
+    [
+        (
+            "cantonese-english",
+            ["Cantonese-English", "Hong Kong Cantonese", "Never output Japanese"],
+            ["Yue"],
+        ),
+        (
+            "cantonese",
+            ["The user speaks Hong Kong Cantonese", "Never output Japanese"],
+            ["Yue"],
+        ),
+        ("english", ["The user speaks English"], []),
+        # Unknown / auto profiles fall back to the base verbatim instruction only.
+        ("auto", ["Transcribe"], ["Hong Kong", "The user speaks English"]),
+        (None, ["Transcribe"], ["Hong Kong", "The user speaks English"]),
+    ],
+)
+def test_build_transcription_instruction_by_profile(
+    profile, expected_snippets, absent_snippets
+):
+    adapter = GeminiAdapter(mock_mode=True)
+    instruction = adapter._build_transcription_instruction(profile)
+    for snippet in expected_snippets:
+        assert snippet in instruction
+    for snippet in absent_snippets:
+        assert snippet not in instruction
 
 
 @pytest.mark.asyncio

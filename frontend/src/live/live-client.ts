@@ -6,29 +6,9 @@
 
 export type SpeechProfile = 'auto' | 'cantonese' | 'cantonese-english' | 'english';
 
-const BASE_TRANSCRIPTION_INSTRUCTION =
-  "Transcribe the user's speech verbatim. Do not answer, do not translate, do not chat, do not explain. Just output the transcription of the audio content word for word.";
-
-function buildTranscriptionInstruction(profile: SpeechProfile = 'auto'): string {
-  if (profile === 'cantonese-english') {
-    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user often speaks Cantonese-English code-switching from a Hong Kong Cantonese speaker. Transcribe Hong Kong Cantonese in Traditional Chinese with Hong Kong wording. Preserve English words, product names, app names, and technical terms in English. Do not translate English into Chinese. Do not convert Cantonese into Mandarin-style phrasing. Output only Traditional Chinese characters and English Latin-script words. Never output Japanese kana or Korean Hangul; if language detection is uncertain, prefer Hong Kong Traditional Chinese plus preserved English terms.`;
-  }
-
-  if (profile === 'cantonese') {
-    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks Hong Kong Cantonese. Transcribe Cantonese in Traditional Chinese with Hong Kong wording. Preserve English product names, app names, and technical terms in English. Do not convert Cantonese into Mandarin-style phrasing. Output only Traditional Chinese characters and English Latin-script words. Never output Japanese kana or Korean Hangul.`;
-  }
-
-  if (profile === 'english') {
-    return `${BASE_TRANSCRIPTION_INSTRUCTION}\n\nThe user speaks English. Preserve English spelling, product names, app names, and technical terms exactly when possible.`;
-  }
-
-  return BASE_TRANSCRIPTION_INSTRUCTION;
-}
-
 export interface LiveClientConfig {
   token: string;
   model: string;
-  speechProfile?: SpeechProfile;
   onTranscription: (text: string, isFinal: boolean) => void;
   onError: (error: string) => void;
   onClose: (code?: number, reason?: string) => void;
@@ -201,36 +181,16 @@ export class LiveClient {
   /**
    * 送出初始化 Setup Message
    */
-  private sendSetupMessage(model: string) {
+  private sendSetupMessage(_model: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    const setupMessage = {
-      setup: {
-        model: model,
-        generationConfig: {
-          // gemini-3.1-flash-live-preview rejects TEXT response modality with 1007.
-          // We only need the input audio transcription; model audio output can be ignored.
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: "Aoede",
-              },
-            },
-          },
-        },
-        systemInstruction: {
-          parts: [
-            {
-              text: buildTranscriptionInstruction(this.config.speechProfile),
-            },
-          ],
-        },
-        inputAudioTranscription: {},
-      },
-    };
+    // Constrained v1alpha endpoint 會忽略/拒絕 client 端送的 setup 內容：model、
+    // generationConfig、systemInstruction 等已在簽發 ephemeral token 時鎖入
+    // live_connect_constraints（見 backend adapter._build_live_connect_constraints）。
+    // 這裡只送空 setup frame 觸發 server 回傳 setupComplete，之後即可串流音訊。
+    const setupMessage = { setup: {} };
 
     this.ws.send(JSON.stringify(setupMessage));
   }

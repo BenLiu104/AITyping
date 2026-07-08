@@ -22,6 +22,68 @@ class GeminiAdapter:
         "note",
     }
 
+    # 支援的轉錄 profile（對應前端語言模式）。auto 為預設 fallback。
+    LIVE_SPEECH_PROFILES = {"auto", "cantonese", "cantonese-english", "english"}
+
+    def _build_transcription_instruction(self, profile: Optional[str] = None) -> str:
+        """依 speech profile 組出 Gemini Live 轉錄 system instruction。
+
+        因 constrained endpoint 會忽略 client 送的 setup，此指令會在簽發 ephemeral
+        token 時鎖入 live_connect_constraints，故邏輯集中在 adapter（唯一 SDK 接觸層）。
+        """
+        base = settings.LIVE_TRANSCRIPTION_BASE_INSTRUCTION
+
+        if profile == "cantonese-english":
+            return (
+                f"{base}\n\nThe user often speaks Cantonese-English code-switching "
+                "from a Hong Kong Cantonese speaker. Transcribe Hong Kong Cantonese "
+                "in Traditional Chinese with Hong Kong wording. Preserve English "
+                "words, product names, app names, and technical terms in English. "
+                "Do not translate English into Chinese. Do not convert Cantonese "
+                "into Mandarin-style phrasing. Output only Traditional Chinese "
+                "characters and English Latin-script words. Never output Japanese "
+                "kana or Korean Hangul; if language detection is uncertain, prefer "
+                "Hong Kong Traditional Chinese plus preserved English terms."
+            )
+
+        if profile == "cantonese":
+            return (
+                f"{base}\n\nThe user speaks Hong Kong Cantonese. Transcribe "
+                "Cantonese in Traditional Chinese with Hong Kong wording. Preserve "
+                "English product names, app names, and technical terms in English. "
+                "Do not convert Cantonese into Mandarin-style phrasing. Output only "
+                "Traditional Chinese characters and English Latin-script words. "
+                "Never output Japanese kana or Korean Hangul."
+            )
+
+        if profile == "english":
+            return (
+                f"{base}\n\nThe user speaks English. Preserve English spelling, "
+                "product names, app names, and technical terms exactly when possible."
+            )
+
+        return base
+
+    def _build_live_connect_constraints(self, profile: Optional[str] = None) -> dict:
+        """組出鎖入 ephemeral token 的 live_connect_constraints。
+
+        Constrained endpoint 要求 model + 完整 setup 在 token 簽發時鎖定；前端只送空
+        setup 觸發 setupComplete。此處鎖 responseModalities / inputAudioTranscription
+        / systemInstruction，令轉錄品質與語言指令不被 constrained endpoint 丟棄。
+        """
+        return {
+            "model": self.get_live_model_name(),
+            "config": {
+                "responseModalities": ["AUDIO"],
+                "inputAudioTranscription": {},
+                "systemInstruction": {
+                    "parts": [
+                        {"text": self._build_transcription_instruction(profile)}
+                    ]
+                },
+            },
+        }
+
     def __init__(self, api_key: Optional[str] = None, mock_mode: Optional[bool] = None):
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_MODE
         self.api_key = api_key or settings.GEMINI_API_KEY
@@ -56,11 +118,18 @@ class GeminiAdapter:
 
         return min(ttl, 1800)
 
-    async def generate_ephemeral_token(self, ttl_seconds: Optional[int] = None) -> dict:
+    async def generate_ephemeral_token(
+        self,
+        ttl_seconds: Optional[int] = None,
+        profile: Optional[str] = None,
+    ) -> dict:
         """為 Live API WebSocket 連線簽發短效 ephemeral token
 
         非 mock 模式只回傳 Gemini Live ephemeral token；若簽發失敗必須 fail closed，
         絕不可把長效 GEMINI_API_KEY 當作 token 回傳給前端。
+
+        profile 依前端語言模式（english / cantonese / cantonese-english / auto）將
+        對應的轉錄 system instruction 鎖入 token 的 live_connect_constraints。
         """
         expire_seconds = self._resolve_live_token_ttl(ttl_seconds)
 
@@ -93,9 +162,9 @@ class GeminiAdapter:
                     "uses": 1,
                     "expire_time": expire_time,
                     "new_session_expire_time": new_session_expire_time,
-                    "live_connect_constraints": {
-                        "model": self.get_live_model_name(),
-                    },
+                    "live_connect_constraints": self._build_live_connect_constraints(
+                        profile
+                    ),
                     "http_options": {"api_version": "v1alpha"},
                 }
             )
