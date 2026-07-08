@@ -57,7 +57,9 @@ describe('LiveClient WebSockets Integration Tests', () => {
 
     expect(wsInstances.length).toBe(1);
     const ws = wsInstances[0];
-    expect(ws.url).toContain('google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent');
+    expect(ws.url).toContain('google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained');
+    expect(ws.url).toContain('access_token=test_token');
+    expect(ws.url).not.toContain('?key=');
 
     ws.readyState = 1;
     ws.onopen?.();

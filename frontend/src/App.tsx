@@ -465,7 +465,7 @@ export default function App() {
         setLiveStatus('正在連線 Live API...');
         const tokenRes = await fetch(`${API_BASE}/api/live-token`, { method: 'POST' });
         if (!tokenRes.ok) {
-          throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
+          throw new Error('無法建立 Gemini Live 安全連線，請稍後再試');
         }
         const tokenData = await tokenRes.json();
 

@@ -73,10 +73,9 @@ export class LiveClient {
   public connect() {
     try {
       const modelName = this.config.model;
-      // Direct API-key WebSocket auth uses v1beta. The v1alpha constrained
-      // endpoint is only for true ephemeral access_token auth.
-      const baseUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
-      const wsUrl = `${baseUrl}?key=${this.config.token}`;
+      // Ephemeral tokens are only accepted by the constrained v1alpha endpoint.
+      const baseUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
+      const wsUrl = `${baseUrl}?access_token=${encodeURIComponent(this.config.token)}`;
 
       this.ws = new WebSocket(wsUrl);
 

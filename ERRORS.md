@@ -5,9 +5,10 @@
 
 | 時間 | 症狀 | 根因 | 解法 | 預防 |
 |---|---|---|---|---|
+| 2026-07-08 11:05 | `/api/live-token` 若簽發 ephemeral token 失敗，有風險把長效 `GEMINI_API_KEY` 當 token 回傳前端 | 舊 adapter 將 SDK token 簽發失敗視為可降級狀態，fallback 到 raw API key 直連 Live API | 移除 raw key fallback；backend 只用 `google-genai` `auth_tokens.create`（`v1alpha`）簽發 Live ephemeral token；失敗時 `/api/live-token` 503 fail closed 且 response 不 echo exception detail | Gemini Live token endpoint must never return `GEMINI_API_KEY` to the frontend. If ephemeral token creation fails, fail closed and investigate SDK/API/version/config：SDK version、`v1alpha` usage、model name、API key permissions、billing/API enablement、Live API availability |
 | 2026-06-27 22:00 | Nginx 靜態站對 `/api/` POST 回 405 | frontend Nginx 未配置 API reverse proxy，POST 被當作靜態資源處理 | 在 `nginx.conf` 新增 `location /api/`，proxy 到 `backend:8000` | 部署 frontend 時檢查 API route proxy，不只測 index.html |
 | 2026-06-27 22:04 | `pcm-processor.js` 載入 403 | host file permission 是 `600`，nginx container 無法讀取 | `chmod 644 frontend/public/pcm-processor.js` 後 rebuild/redeploy | 新增 public/worklet asset 時確認權限至少 `644` |
-| 2026-06-27 22:10 | `/api/live-token` 回 501 / 404 | Google AI Studio API key 不支援 `create_web_token`；SDK 亦無可用簽發方法 | backend adapter 加 direct API key fallback，由 `/api/live-token` 回傳 Live 連線設定 | Live token path 必須保留 direct-key fallback；不要假設 web token API 可用 |
+| 2026-06-27 22:10 | `/api/live-token` 回 501 / 404（舊紀錄，已被 2026-07-08 security fix 推翻） | 當時誤以為 Google AI Studio API key 無法簽發 Live ephemeral token | 現在改用 `google-genai` `auth_tokens.create` + `v1alpha` 建立 short-lived token，無法簽發時 fail closed | 不要恢復 direct-key fallback；Google AI Studio / Gemini API key 留在 backend，只能用於簽發 ephemeral token |
 | 2026-06-27 22:53 | Production UI 退化成裸 HTML | 使用 Tailwind utility class，但 Tailwind 未安裝/未接入 Vite | 安裝 `tailwindcss` / `@tailwindcss/vite`，`index.css` import Tailwind | build 後確認 CSS bundle 不是極小值；必要時用 browser 檢查 computed style |
 | 2026-06-27 22:53 | Settings checkbox / options 點不到 | 偽 switch button + label/span pointer interception | 改為原生 checkbox input 覆蓋 switch，decorative spans 加 `pointer-events-none` | 互動元件用 native input + accessibility role，並實測 click |
 | 2026-06-27 22:53 | Mic 只走 mock / 不請求真 mic | `mockMode` 預設 true；真流程又先 await token 再 `getUserMedia` | mock 預設 false；真流程先 `getUserMedia()`，成功後才取 token | iOS mic permission 必須在 user gesture 內第一時間請求 |

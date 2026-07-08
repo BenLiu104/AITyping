@@ -42,10 +42,10 @@ async def get_live_token(
             expiresAt=token_data["expiresAt"],
             model=token_data["model"],
         )
-    except NotImplementedError as e:
-        # 當 SDK 還不支援真實 token 簽發時，如果正處於非 Mock，給予 501
-        raise HTTPException(status_code=501, detail=str(e))
-    except Exception as e:
+    except Exception:
+        # Fail closed: never echo adapter errors because SDK messages could
+        # contain credential-like values. The frontend only needs a safe failure.
         raise HTTPException(
-            status_code=500, detail=f"簽署 Ephemeral Token 失敗: {str(e)}"
+            status_code=503,
+            detail="Gemini Live secure connection unavailable; please try again later",
         )

@@ -1,5 +1,6 @@
 import json
 import re
+import datetime
 from typing import Optional
 from google import genai
 from google.genai import types
@@ -46,57 +47,56 @@ class GeminiAdapter:
     async def generate_ephemeral_token(self, ttl_seconds: Optional[int] = None) -> dict:
         """為 Live API WebSocket 連線簽發短效 ephemeral token
 
-        NOTE:
-        根據 google-genai 1.x SDK 設計，透過 client.models.generate_web_token() 或類似機制簽發 Token。
-        若處於 Mock 模式，則回傳模擬 Token。
+        非 mock 模式只回傳 Gemini Live ephemeral token；若簽發失敗必須 fail closed，
+        絕不可把長效 GEMINI_API_KEY 當作 token 回傳給前端。
         """
         ttl = ttl_seconds or settings.LIVE_TOKEN_TTL
 
         if self.mock_mode:
-            import datetime
-
+            now = datetime.datetime.now(datetime.timezone.utc)
             return {
                 "token": "mock_ephemeral_token_xyz123",
-                "expiresAt": (
-                    datetime.datetime.now(datetime.timezone.utc)
-                    + datetime.timedelta(seconds=ttl)
-                ).isoformat(),
+                "expiresAt": (now + datetime.timedelta(seconds=ttl)).isoformat(),
                 "model": self.get_live_model_name(),
             }
 
-        if self.client is None:
-            raise ValueError("Client 未初始化，無法呼叫 API。")
+        if not self.api_key or self.api_key == "your_gemini_api_key_here":
+            raise ValueError(
+                "GEMINI_API_KEY is missing; cannot create Gemini Live ephemeral token"
+            )
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expire_seconds = min(int(ttl), 1800)
+        expire_time = now + datetime.timedelta(seconds=expire_seconds)
+        new_session_expire_time = now + datetime.timedelta(minutes=1)
 
         try:
-            # 官方 Live Client/WebSocket Token 簽發方式：
-            # 為了防範 API 變更，我們用 adapter 做這層包裝
-            # 在 Live API 1.0 中，最通用的簽署方式是：
-            try:
-                # 這裡我們先封裝標準呼叫。
-                response = self.client.models.create_web_token(
-                    model=self.get_live_model_name(), ttl=f"{ttl}s"
-                )
-                return {
-                    "token": response.token,
-                    "expiresAt": response.expires_at,
-                    "model": self.get_live_model_name(),
+            token_client = genai.Client(
+                api_key=self.api_key,
+                http_options={"api_version": "v1alpha"},
+            )
+            token = token_client.auth_tokens.create(
+                config={
+                    "uses": 1,
+                    "expire_time": expire_time,
+                    "new_session_expire_time": new_session_expire_time,
+                    "live_connect_constraints": {
+                        "model": self.get_live_model_name(),
+                    },
+                    "http_options": {"api_version": "v1alpha"},
                 }
-            except (AttributeError, Exception):
-                # 降級/回退處理：如果 SDK 不支持或當前 API Key 不允許簽發短效 Token（例如第三方/NVIDIA/自備 API 密鑰）
-                # 我們直接安全的將原 GEMINI_API_KEY 作為 Token 返回給前端直連
-                import datetime
+            )
+        except Exception as e:
+            message = str(e).replace(self.api_key, "[REDACTED]")
+            raise RuntimeError(
+                f"Gemini Live ephemeral token creation failed: {message}"
+            ) from e
 
-                return {
-                    "token": self.api_key,
-                    "expiresAt": (
-                        datetime.datetime.now(datetime.timezone.utc)
-                        + datetime.timedelta(seconds=ttl)
-                    ).isoformat(),
-                    "model": self.get_live_model_name(),
-                }
-
-        except APIError as e:
-            raise RuntimeError(f"Gemini API 簽署 ephemeral token 失敗: {e}")
+        return {
+            "token": token.name,
+            "expiresAt": expire_time.isoformat(),
+            "model": self.get_live_model_name(),
+        }
 
     async def cleanup_transcript(
         self, raw_transcript: str, mode: str = "message", language: str = "mixed"

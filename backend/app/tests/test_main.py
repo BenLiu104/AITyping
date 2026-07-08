@@ -71,6 +71,50 @@ def test_live_token_route_mock():
     app.dependency_overrides.clear()
 
 
+def test_live_token_route_returns_auth_token_name():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None):
+            return {
+                "token": "auth_tokens/test-route-token",
+                "expiresAt": "2026-07-08T12:00:00+00:00",
+                "model": "models/gemini-3.1-flash-live-preview",
+            }
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "token": "auth_tokens/test-route-token",
+        "expiresAt": "2026-07-08T12:00:00+00:00",
+        "model": "models/gemini-3.1-flash-live-preview",
+    }
+
+    app.dependency_overrides.clear()
+
+
+def test_live_token_route_failure_is_safe_and_does_not_echo_api_key():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None):
+            raise RuntimeError("upstream failed for real-backend-api-key")
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token")
+    body = response.text
+
+    assert response.status_code == 503
+    assert "real-backend-api-key" not in body
+    assert "Gemini Live secure connection unavailable" in body
+
+    app.dependency_overrides.clear()
+
+
 def test_debug_event_accepts_counters_without_content():
     payload = {
         "phase": "no-transcript",

@@ -303,6 +303,36 @@ describe('App Component Core UI Tests', () => {
     expect(liveClientMockState.latestConfig.speechProfile).toBe('english')
   })
 
+  it('shows a safe error when Gemini Live token creation fails without frontend key fallback', async () => {
+    mockBrowserAudioPipeline()
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ detail: 'unsafe backend detail should not be displayed' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('語言模式'), { target: { value: 'en' } })
+
+    const micButton = screen.getByRole('button', { name: /點一下開始錄音/i })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+    await act(async () => {
+      fireEvent.pointerDown(micButton)
+      await flushPromises()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/live-token', { method: 'POST' })
+    expect(liveClientMockState.latestClient).toBeUndefined()
+    expect(screen.getByText('無法建立 Gemini Live 安全連線，請稍後再試')).toBeInTheDocument()
+    expect(screen.queryByText(/unsafe backend detail/i)).not.toBeInTheDocument()
+  })
+
   it('cleans up Live input transcription after push-to-talk release', async () => {
     vi.useFakeTimers()
     window.localStorage.setItem('aityping:mic-permission-primed', 'true')
