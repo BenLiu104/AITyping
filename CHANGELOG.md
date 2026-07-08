@@ -10,6 +10,7 @@
 - SenseVoice STT 可重現部署工具鏈（開源 / redeploy 前提）：`sensevoice/setup.sh` 一鍵就地建 venv + 裝依賴 + 取模型 + sha256 把關；`sensevoice/fetch_models.py` 由 ModelScope 官方 `iic/*`（pinned revision）下載 streaming ONNX 權重並 copy 入 package；`sensevoice/models.sha256`（7 檔）做完整性 manifest；`sensevoice/sensevoice-api.service.template`（`__INSTALL_DIR__` / `__RUN_USER__` 佔位符）做 infra-as-code。`requirements.txt` 修正為真正可安裝：`sense-voice-streaming-asr` 改用 git+commit pin（非 PyPI，會 404）、補回 `torch` / `torchaudio` CPU wheel。`DEPLOY.md` §2/§3/§6 重寫對齊新流程。
 - GitHub Pages frontend deploy workflow now also triggers on `uiux` branch pushes.
 - Cleanup mode re-run UX：停止錄音並完成整理後，使用者可切換整理模式，前端會保留同一份 final raw transcript 並重新呼叫對應 cleanup endpoint（標準模式 `/api/cleanup`、智能整理 `/api/smart-cleanup`），只替換整理結果，不重錄、不重跑 STT；re-cleanup 失敗時保留原逐字稿與舊整理結果。
+- PWA / iOS app icon 全套：由單張 1254² 原圖 resize 出 `pwa-64x64` / `pwa-192x192` / `pwa-512x512`（manifest `any`）、`maskable-icon-512x512`（80% safe zone padding）、`apple-touch-icon`（180²，iOS Home Screen，opaque）、`favicon.ico`（16/32/48）/ `favicon.png`（32²）。圖檔米白底（`#FFF9EF`）配合「柔和生活風」UI；`index.html` 加 `apple-touch-icon` link + `theme-color` meta，`<title>` 由 `frontend` 改為 `AITyping`。
 
 ### Security
 - Removed the Gemini Live `/api/live-token` raw `GEMINI_API_KEY` fallback. The endpoint now returns only a short-lived Live ephemeral token created by backend `google-genai` `auth_tokens.create` (`v1alpha`) or fails closed with a safe error.
@@ -37,6 +38,10 @@
 - `semantic-dev` branch merged into `main`（Smart Cleanup MVP1，real API 真機驗收通過後合併）。
 - `uixi` branch merged into `main`（「柔和生活風」主畫面 UI 改版，deploy 後 Ben 確認「效果都 ok」）。
 - `deploy-frontend.yml` deploy trigger branch 加入 `uixi`（`semantic-dev` 保留）；同步將 `uixi` 加入 `github-pages` environment 的 deployment-branch-policy 白名單，供 UI 改版真機測試自動 deploy。
+- Favicon 由舊紫色 Hermes mark（`favicon.svg`，`#863bff`）改為新 AITyping 品牌：移除 `favicon.svg`，改用由 app icon 生成的 `favicon.png`（32²）+ `favicon.ico`（16/32/48），瀏覽器分頁圖標現與 Home Screen app icon 一致（米白底 + sage green A）。
+
+### Fixed
+- PWA manifest icon 引用一直指向唔存在的檔案：修正 `vite.config.ts` typo `pwa-512x1512.png` → `pwa-512x512.png`；`includeAssets` 移除唔存在的 `mask-icon.svg`、`apple-touch-icon.png`（改為由 `public/` 真實檔案提供）。連同 app icon 全套加入後，manifest 4 個 icon 與 apple-touch-icon 現全部 resolve（build precache 6 → 13 entries）。
 
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。
