@@ -36,6 +36,7 @@
 - `semantic-dev` branch merged into `main`（Smart Cleanup MVP1，real API 真機驗收通過後合併）。
 - `uixi` branch merged into `main`（「柔和生活風」主畫面 UI 改版，deploy 後 Ben 確認「效果都 ok」）。
 - `deploy-frontend.yml` deploy trigger branch 加入 `uixi`（`semantic-dev` 保留）；同步將 `uixi` 加入 `github-pages` environment 的 deployment-branch-policy 白名單，供 UI 改版真機測試自動 deploy。
+- Favicon 由舊紫色 Hermes mark（`favicon.svg`，`#863bff`）改為新 AITyping 品牌：移除 `favicon.svg`，改用由 app icon 生成的 `favicon.png`（32²）+ `favicon.ico`（16/32/48），瀏覽器分頁圖標現與 Home Screen app icon 一致（米白底 + sage green A）。
 
 ### Fixed
 - PWA manifest icon 引用一直指向唔存在的檔案：修正 `vite.config.ts` typo `pwa-512x1512.png` → `pwa-512x512.png`；`includeAssets` 移除唔存在的 `mask-icon.svg`、`apple-touch-icon.png`（改為由 `public/` 真實檔案提供）。連同 app icon 全套加入後，manifest 4 個 icon 與 apple-touch-icon 現全部 resolve（build precache 6 → 13 entries）。
