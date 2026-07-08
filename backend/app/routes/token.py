@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.gemini.adapter import GeminiAdapter
@@ -31,7 +31,7 @@ class TokenResponse(BaseModel):
 
 @router.post("/live-token", response_model=TokenResponse, tags=["Gemini"])
 async def get_live_token(
-    ttl: Optional[int] = None,
+    ttl: Optional[int] = Query(default=None, ge=1),
     adapter: GeminiAdapter = Depends(get_gemini_adapter),
 ):
     """簽發用於前端瀏覽器直連 Gemini Live API WebSocket 的短效 Ephemeral Token"""

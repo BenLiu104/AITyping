@@ -13,6 +13,7 @@
 
 ### Security
 - Removed the Gemini Live `/api/live-token` raw `GEMINI_API_KEY` fallback. The endpoint now returns only a short-lived Live ephemeral token created by backend `google-genai` `auth_tokens.create` (`v1alpha`) or fails closed with a safe error.
+- Added positive TTL validation for Gemini Live ephemeral token creation so invalid negative/zero TTLs cannot produce already-expired tokens.
 - Public-repo hygiene：從 tracked tree 移除 origin VPS IP（`<VPS_IP>` 佔位）、絕對 home 路徑（`<INSTALL_DIR>` / `<DEPLOY_USER>`）、及可識別的服務 domain（`<backend-domain>` / `<sensevoice-domain>`）。VPS IP 屬真實洩露（架構本應以 Cloudflare Tunnel 隱藏 origin），domain 則為降低 fork 耦合。註：僅清理當前 tree，git 歷史舊 commit 仍含舊值（未做 history rewrite）。
 - 前端不再 hardcode 後端 / SenseVoice endpoint：`VITE_API_BASE_URL` 與新增 `VITE_SENSEVOICE_WS_URL` 於 build time 由 GitHub Actions repo variables 注入（deploy workflow 缺變數即 fail-fast，不再 fallback 到寫死 domain）。local dev 未設變數時 SenseVoice WS fallback 到同源 `/ws/transcribe-v2`。
 - 後端 CORS `ALLOWED_ORIGINS` code 預設值由 production domain 改為 `localhost`（生產 origin 一律由 `.env` 提供）。

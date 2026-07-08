@@ -44,19 +44,33 @@ class GeminiAdapter:
         """獲取文字整理（Cleanup）模型名稱"""
         return settings.GEMINI_CLEANUP_MODEL
 
+    def _resolve_live_token_ttl(self, ttl_seconds: Optional[int] = None) -> int:
+        raw_ttl = settings.LIVE_TOKEN_TTL if ttl_seconds is None else ttl_seconds
+        try:
+            ttl = int(raw_ttl)
+        except (TypeError, ValueError) as e:
+            raise ValueError("LIVE_TOKEN_TTL must be a positive integer") from e
+
+        if ttl <= 0:
+            raise ValueError("LIVE_TOKEN_TTL must be a positive integer")
+
+        return min(ttl, 1800)
+
     async def generate_ephemeral_token(self, ttl_seconds: Optional[int] = None) -> dict:
         """為 Live API WebSocket 連線簽發短效 ephemeral token
 
         非 mock 模式只回傳 Gemini Live ephemeral token；若簽發失敗必須 fail closed，
         絕不可把長效 GEMINI_API_KEY 當作 token 回傳給前端。
         """
-        ttl = ttl_seconds or settings.LIVE_TOKEN_TTL
+        expire_seconds = self._resolve_live_token_ttl(ttl_seconds)
 
         if self.mock_mode:
             now = datetime.datetime.now(datetime.timezone.utc)
             return {
                 "token": "mock_ephemeral_token_xyz123",
-                "expiresAt": (now + datetime.timedelta(seconds=ttl)).isoformat(),
+                "expiresAt": (
+                    now + datetime.timedelta(seconds=expire_seconds)
+                ).isoformat(),
                 "model": self.get_live_model_name(),
             }
 
@@ -66,7 +80,6 @@ class GeminiAdapter:
             )
 
         now = datetime.datetime.now(datetime.timezone.utc)
-        expire_seconds = min(int(ttl), 1800)
         expire_time = now + datetime.timedelta(seconds=expire_seconds)
         new_session_expire_time = now + datetime.timedelta(minutes=1)
 

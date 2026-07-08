@@ -65,6 +65,7 @@
 - SDK surface check: installed `google-genai` exposes `client.auth_tokens` ✅
 - local actual-key scan: repo `.env` not present, so no real key value available to scan
 - backend/scripts/verify_live_ephemeral_token.py smoke: exits non-zero safely without `.env` (`ValueError: API Key 缺失`), prints no secret
+- follow-up TTL validation fix: backend pytest 25/25 ✅; `ruff check` edited backend files ✅; route rejects `ttl=-1` with 422 and adapter rejects `ttl_seconds <= 0` before SDK call
 - 未驗證：real Gemini `auth_tokens.create` against production `.env` / billing-enabled API key
 ```
 

@@ -96,6 +96,23 @@ def test_live_token_route_returns_auth_token_name():
     app.dependency_overrides.clear()
 
 
+def test_live_token_route_rejects_negative_ttl_before_token_generation():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None):
+            raise AssertionError("invalid query ttl must not reach adapter")
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token?ttl=-1")
+
+    assert response.status_code == 422
+    assert "auth_tokens/" not in response.text
+
+    app.dependency_overrides.clear()
+
+
 def test_live_token_route_failure_is_safe_and_does_not_echo_api_key():
     from app.routes.token import get_gemini_adapter as token_adapter
 

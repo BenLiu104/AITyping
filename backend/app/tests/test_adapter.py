@@ -63,6 +63,26 @@ async def test_generate_ephemeral_token_uses_auth_tokens_create(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("ttl_seconds", [-60, 0])
+async def test_generate_ephemeral_token_rejects_non_positive_ttl(
+    ttl_seconds, monkeypatch
+):
+    class FakeClient:
+        def __init__(self, *, api_key, http_options):
+            raise AssertionError("invalid ttl must be rejected before SDK call")
+
+    monkeypatch.setattr("app.gemini.adapter.genai.Client", FakeClient)
+
+    adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
+    adapter.mock_mode = False
+
+    with pytest.raises(ValueError) as excinfo:
+        await adapter.generate_ephemeral_token(ttl_seconds=ttl_seconds)
+
+    assert "positive integer" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
 async def test_generate_ephemeral_token_failure_never_returns_api_key(monkeypatch):
     class FakeClient:
         def __init__(self, *, api_key, http_options):

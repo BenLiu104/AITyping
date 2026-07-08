@@ -5,6 +5,7 @@
 
 | 時間 | 症狀 | 根因 | 解法 | 預防 |
 |---|---|---|---|---|
+| 2026-07-08 11:29 | `generate_ephemeral_token(ttl_seconds=-N)` 會計出 past `expire_time`，可能回傳一個已過期的 ephemeral token | TTL resolution 用 `ttl_seconds or settings.LIVE_TOKEN_TTL` + `min(int(ttl), 1800)`，只限制最大值，無限制正值；負數可穿透到 expiry 計算 | adapter 新增 positive integer TTL validation，`None` 才用 settings，`<=0` raise；route query `ttl` 加 `Query(ge=1)`，invalid request 422 before token mint | 任何 expiry/TTL 計算都要同時驗證 lower bound；不要只 `min(max_ttl)` |
 | 2026-07-08 11:05 | `/api/live-token` 若簽發 ephemeral token 失敗，有風險把長效 `GEMINI_API_KEY` 當 token 回傳前端 | 舊 adapter 將 SDK token 簽發失敗視為可降級狀態，fallback 到 raw API key 直連 Live API | 移除 raw key fallback；backend 只用 `google-genai` `auth_tokens.create`（`v1alpha`）簽發 Live ephemeral token；失敗時 `/api/live-token` 503 fail closed 且 response 不 echo exception detail | Gemini Live token endpoint must never return `GEMINI_API_KEY` to the frontend. If ephemeral token creation fails, fail closed and investigate SDK/API/version/config：SDK version、`v1alpha` usage、model name、API key permissions、billing/API enablement、Live API availability |
 | 2026-06-27 22:00 | Nginx 靜態站對 `/api/` POST 回 405 | frontend Nginx 未配置 API reverse proxy，POST 被當作靜態資源處理 | 在 `nginx.conf` 新增 `location /api/`，proxy 到 `backend:8000` | 部署 frontend 時檢查 API route proxy，不只測 index.html |
 | 2026-06-27 22:04 | `pcm-processor.js` 載入 403 | host file permission 是 `600`，nginx container 無法讀取 | `chmod 644 frontend/public/pcm-processor.js` 後 rebuild/redeploy | 新增 public/worklet asset 時確認權限至少 `644` |
