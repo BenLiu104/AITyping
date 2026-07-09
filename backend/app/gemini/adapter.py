@@ -1,5 +1,6 @@
 import json
 import re
+import datetime
 from typing import Optional
 from google import genai
 from google.genai import types
@@ -20,6 +21,68 @@ class GeminiAdapter:
         "uncertain",
         "note",
     }
+
+    # 支援的轉錄 profile（對應前端語言模式）。auto 為預設 fallback。
+    LIVE_SPEECH_PROFILES = {"auto", "cantonese", "cantonese-english", "english"}
+
+    def _build_transcription_instruction(self, profile: Optional[str] = None) -> str:
+        """依 speech profile 組出 Gemini Live 轉錄 system instruction。
+
+        因 constrained endpoint 會忽略 client 送的 setup，此指令會在簽發 ephemeral
+        token 時鎖入 live_connect_constraints，故邏輯集中在 adapter（唯一 SDK 接觸層）。
+        """
+        base = settings.LIVE_TRANSCRIPTION_BASE_INSTRUCTION
+
+        if profile == "cantonese-english":
+            return (
+                f"{base}\n\nThe user often speaks Cantonese-English code-switching "
+                "from a Hong Kong Cantonese speaker. Transcribe Hong Kong Cantonese "
+                "in Traditional Chinese with Hong Kong wording. Preserve English "
+                "words, product names, app names, and technical terms in English. "
+                "Do not translate English into Chinese. Do not convert Cantonese "
+                "into Mandarin-style phrasing. Output only Traditional Chinese "
+                "characters and English Latin-script words. Never output Japanese "
+                "kana or Korean Hangul; if language detection is uncertain, prefer "
+                "Hong Kong Traditional Chinese plus preserved English terms."
+            )
+
+        if profile == "cantonese":
+            return (
+                f"{base}\n\nThe user speaks Hong Kong Cantonese. Transcribe "
+                "Cantonese in Traditional Chinese with Hong Kong wording. Preserve "
+                "English product names, app names, and technical terms in English. "
+                "Do not convert Cantonese into Mandarin-style phrasing. Output only "
+                "Traditional Chinese characters and English Latin-script words. "
+                "Never output Japanese kana or Korean Hangul."
+            )
+
+        if profile == "english":
+            return (
+                f"{base}\n\nThe user speaks English. Preserve English spelling, "
+                "product names, app names, and technical terms exactly when possible."
+            )
+
+        return base
+
+    def _build_live_connect_constraints(self, profile: Optional[str] = None) -> dict:
+        """組出鎖入 ephemeral token 的 live_connect_constraints。
+
+        Constrained endpoint 要求 model + 完整 setup 在 token 簽發時鎖定；前端只送空
+        setup 觸發 setupComplete。此處鎖 responseModalities / inputAudioTranscription
+        / systemInstruction，令轉錄品質與語言指令不被 constrained endpoint 丟棄。
+        """
+        return {
+            "model": self.get_live_model_name(),
+            "config": {
+                "responseModalities": ["AUDIO"],
+                "inputAudioTranscription": {},
+                "systemInstruction": {
+                    "parts": [
+                        {"text": self._build_transcription_instruction(profile)}
+                    ]
+                },
+            },
+        }
 
     def __init__(self, api_key: Optional[str] = None, mock_mode: Optional[bool] = None):
         self.mock_mode = mock_mode if mock_mode is not None else settings.MOCK_MODE
@@ -43,60 +106,79 @@ class GeminiAdapter:
         """獲取文字整理（Cleanup）模型名稱"""
         return settings.GEMINI_CLEANUP_MODEL
 
-    async def generate_ephemeral_token(self, ttl_seconds: Optional[int] = None) -> dict:
+    def _resolve_live_token_ttl(self, ttl_seconds: Optional[int] = None) -> int:
+        raw_ttl = settings.LIVE_TOKEN_TTL if ttl_seconds is None else ttl_seconds
+        try:
+            ttl = int(raw_ttl)
+        except (TypeError, ValueError) as e:
+            raise ValueError("LIVE_TOKEN_TTL must be a positive integer") from e
+
+        if ttl <= 0:
+            raise ValueError("LIVE_TOKEN_TTL must be a positive integer")
+
+        return min(ttl, 1800)
+
+    async def generate_ephemeral_token(
+        self,
+        ttl_seconds: Optional[int] = None,
+        profile: Optional[str] = None,
+    ) -> dict:
         """為 Live API WebSocket 連線簽發短效 ephemeral token
 
-        NOTE:
-        根據 google-genai 1.x SDK 設計，透過 client.models.generate_web_token() 或類似機制簽發 Token。
-        若處於 Mock 模式，則回傳模擬 Token。
+        非 mock 模式只回傳 Gemini Live ephemeral token；若簽發失敗必須 fail closed，
+        絕不可把長效 GEMINI_API_KEY 當作 token 回傳給前端。
+
+        profile 依前端語言模式（english / cantonese / cantonese-english / auto）將
+        對應的轉錄 system instruction 鎖入 token 的 live_connect_constraints。
         """
-        ttl = ttl_seconds or settings.LIVE_TOKEN_TTL
+        expire_seconds = self._resolve_live_token_ttl(ttl_seconds)
 
         if self.mock_mode:
-            import datetime
-
+            now = datetime.datetime.now(datetime.timezone.utc)
             return {
                 "token": "mock_ephemeral_token_xyz123",
                 "expiresAt": (
-                    datetime.datetime.now(datetime.timezone.utc)
-                    + datetime.timedelta(seconds=ttl)
+                    now + datetime.timedelta(seconds=expire_seconds)
                 ).isoformat(),
                 "model": self.get_live_model_name(),
             }
 
-        if self.client is None:
-            raise ValueError("Client 未初始化，無法呼叫 API。")
+        if not self.api_key or self.api_key == "your_gemini_api_key_here":
+            raise ValueError(
+                "GEMINI_API_KEY is missing; cannot create Gemini Live ephemeral token"
+            )
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expire_time = now + datetime.timedelta(seconds=expire_seconds)
+        new_session_expire_time = now + datetime.timedelta(minutes=1)
 
         try:
-            # 官方 Live Client/WebSocket Token 簽發方式：
-            # 為了防範 API 變更，我們用 adapter 做這層包裝
-            # 在 Live API 1.0 中，最通用的簽署方式是：
-            try:
-                # 這裡我們先封裝標準呼叫。
-                response = self.client.models.create_web_token(
-                    model=self.get_live_model_name(), ttl=f"{ttl}s"
-                )
-                return {
-                    "token": response.token,
-                    "expiresAt": response.expires_at,
-                    "model": self.get_live_model_name(),
+            token_client = genai.Client(
+                api_key=self.api_key,
+                http_options={"api_version": "v1alpha"},
+            )
+            token = token_client.auth_tokens.create(
+                config={
+                    "uses": 1,
+                    "expire_time": expire_time,
+                    "new_session_expire_time": new_session_expire_time,
+                    "live_connect_constraints": self._build_live_connect_constraints(
+                        profile
+                    ),
+                    "http_options": {"api_version": "v1alpha"},
                 }
-            except (AttributeError, Exception):
-                # 降級/回退處理：如果 SDK 不支持或當前 API Key 不允許簽發短效 Token（例如第三方/NVIDIA/自備 API 密鑰）
-                # 我們直接安全的將原 GEMINI_API_KEY 作為 Token 返回給前端直連
-                import datetime
+            )
+        except Exception as e:
+            message = str(e).replace(self.api_key, "[REDACTED]")
+            raise RuntimeError(
+                f"Gemini Live ephemeral token creation failed: {message}"
+            ) from e
 
-                return {
-                    "token": self.api_key,
-                    "expiresAt": (
-                        datetime.datetime.now(datetime.timezone.utc)
-                        + datetime.timedelta(seconds=ttl)
-                    ).isoformat(),
-                    "model": self.get_live_model_name(),
-                }
-
-        except APIError as e:
-            raise RuntimeError(f"Gemini API 簽署 ephemeral token 失敗: {e}")
+        return {
+            "token": token.name,
+            "expiresAt": expire_time.isoformat(),
+            "model": self.get_live_model_name(),
+        }
 
     async def cleanup_transcript(
         self, raw_transcript: str, mode: str = "message", language: str = "mixed"

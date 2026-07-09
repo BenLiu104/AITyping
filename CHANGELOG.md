@@ -6,12 +6,21 @@
 
 ## [Unreleased]
 
+### Fixed
+- Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
+
+### Added
+- `/api/live-token` 新增 optional `profile` query 參數（`english` / `cantonese` / `cantonese-english` / `auto`）：後端 `GeminiAdapter._build_transcription_instruction()` 依 profile 組出對應轉錄 system instruction 並鎖入 token。轉錄語言指令（如「Never output Japanese kana」防日文誤判、保留 English 技術詞）由前端搬到後端集中管理；未知 / 缺省 profile 一律 fallback 到通用逐字轉錄指令。前端取 token 時依語言模式帶上 `?profile=`。
+
 ### Added
 - SenseVoice STT 可重現部署工具鏈（開源 / redeploy 前提）：`sensevoice/setup.sh` 一鍵就地建 venv + 裝依賴 + 取模型 + sha256 把關；`sensevoice/fetch_models.py` 由 ModelScope 官方 `iic/*`（pinned revision）下載 streaming ONNX 權重並 copy 入 package；`sensevoice/models.sha256`（7 檔）做完整性 manifest；`sensevoice/sensevoice-api.service.template`（`__INSTALL_DIR__` / `__RUN_USER__` 佔位符）做 infra-as-code。`requirements.txt` 修正為真正可安裝：`sense-voice-streaming-asr` 改用 git+commit pin（非 PyPI，會 404）、補回 `torch` / `torchaudio` CPU wheel。`DEPLOY.md` §2/§3/§6 重寫對齊新流程。
 - GitHub Pages frontend deploy workflow now also triggers on `uiux` branch pushes.
 - Cleanup mode re-run UX：停止錄音並完成整理後，使用者可切換整理模式，前端會保留同一份 final raw transcript 並重新呼叫對應 cleanup endpoint（標準模式 `/api/cleanup`、智能整理 `/api/smart-cleanup`），只替換整理結果，不重錄、不重跑 STT；re-cleanup 失敗時保留原逐字稿與舊整理結果。
+- PWA / iOS app icon 全套：由單張 1254² 原圖 resize 出 `pwa-64x64` / `pwa-192x192` / `pwa-512x512`（manifest `any`）、`maskable-icon-512x512`（80% safe zone padding）、`apple-touch-icon`（180²，iOS Home Screen，opaque）、`favicon.ico`（16/32/48）/ `favicon.png`（32²）。圖檔米白底（`#FFF9EF`）配合「柔和生活風」UI；`index.html` 加 `apple-touch-icon` link + `theme-color` meta，`<title>` 由 `frontend` 改為 `AITyping`。
 
 ### Security
+- Removed the Gemini Live `/api/live-token` raw `GEMINI_API_KEY` fallback. The endpoint now returns only a short-lived Live ephemeral token created by backend `google-genai` `auth_tokens.create` (`v1alpha`) or fails closed with a safe error.
+- Added positive TTL validation for Gemini Live ephemeral token creation so invalid negative/zero TTLs cannot produce already-expired tokens.
 - Public-repo hygiene：從 tracked tree 移除 origin VPS IP（`<VPS_IP>` 佔位）、絕對 home 路徑（`<INSTALL_DIR>` / `<DEPLOY_USER>`）、及可識別的服務 domain（`<backend-domain>` / `<sensevoice-domain>`）。VPS IP 屬真實洩露（架構本應以 Cloudflare Tunnel 隱藏 origin），domain 則為降低 fork 耦合。註：僅清理當前 tree，git 歷史舊 commit 仍含舊值（未做 history rewrite）。
 - 前端不再 hardcode 後端 / SenseVoice endpoint：`VITE_API_BASE_URL` 與新增 `VITE_SENSEVOICE_WS_URL` 於 build time 由 GitHub Actions repo variables 注入（deploy workflow 缺變數即 fail-fast，不再 fallback 到寫死 domain）。local dev 未設變數時 SenseVoice WS fallback 到同源 `/ws/transcribe-v2`。
 - 後端 CORS `ALLOWED_ORIGINS` code 預設值由 production domain 改為 `localhost`（生產 origin 一律由 `.env` 提供）。
@@ -35,6 +44,10 @@
 - `semantic-dev` branch merged into `main`（Smart Cleanup MVP1，real API 真機驗收通過後合併）。
 - `uixi` branch merged into `main`（「柔和生活風」主畫面 UI 改版，deploy 後 Ben 確認「效果都 ok」）。
 - `deploy-frontend.yml` deploy trigger branch 加入 `uixi`（`semantic-dev` 保留）；同步將 `uixi` 加入 `github-pages` environment 的 deployment-branch-policy 白名單，供 UI 改版真機測試自動 deploy。
+- Favicon 由舊紫色 Hermes mark（`favicon.svg`，`#863bff`）改為新 AITyping 品牌：移除 `favicon.svg`，改用由 app icon 生成的 `favicon.png`（32²）+ `favicon.ico`（16/32/48），瀏覽器分頁圖標現與 Home Screen app icon 一致（米白底 + sage green A）。
+
+### Fixed
+- PWA manifest icon 引用一直指向唔存在的檔案：修正 `vite.config.ts` typo `pwa-512x1512.png` → `pwa-512x512.png`；`includeAssets` 移除唔存在的 `mask-icon.svg`、`apple-touch-icon.png`（改為由 `public/` 真實檔案提供）。連同 app icon 全套加入後，manifest 4 個 icon 與 apple-touch-icon 現全部 resolve（build precache 6 → 13 entries）。
 
 ### Added
 - Phase 0 專案治理文件：`README.md`、`Roadmap.md`、`AGENTS.md`、`PRD.md`、`GATES.md`、`STATUS.md`、`ERRORS.md`。

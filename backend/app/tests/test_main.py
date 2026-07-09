@@ -71,6 +71,116 @@ def test_live_token_route_mock():
     app.dependency_overrides.clear()
 
 
+def test_live_token_route_returns_auth_token_name():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None, profile=None):
+            return {
+                "token": "auth_tokens/test-route-token",
+                "expiresAt": "2026-07-08T12:00:00+00:00",
+                "model": "models/gemini-3.1-flash-live-preview",
+            }
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "token": "auth_tokens/test-route-token",
+        "expiresAt": "2026-07-08T12:00:00+00:00",
+        "model": "models/gemini-3.1-flash-live-preview",
+    }
+
+    app.dependency_overrides.clear()
+
+
+def test_live_token_route_forwards_profile_to_adapter():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    captured = {}
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None, profile=None):
+            captured["profile"] = profile
+            return {
+                "token": "auth_tokens/test-route-token",
+                "expiresAt": "2026-07-08T12:00:00+00:00",
+                "model": "models/gemini-3.1-flash-live-preview",
+            }
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token?profile=english")
+
+    assert response.status_code == 200
+    assert captured["profile"] == "english"
+
+    app.dependency_overrides.clear()
+
+
+def test_live_token_route_ignores_unknown_profile():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    captured = {}
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None, profile=None):
+            captured["profile"] = profile
+            return {
+                "token": "auth_tokens/test-route-token",
+                "expiresAt": "2026-07-08T12:00:00+00:00",
+                "model": "models/gemini-3.1-flash-live-preview",
+            }
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    # Unknown profiles are normalized to None (adapter falls back to base prompt).
+    response = client.post("/api/live-token?profile=klingon")
+
+    assert response.status_code == 200
+    assert captured["profile"] is None
+
+    app.dependency_overrides.clear()
+
+
+def test_live_token_route_rejects_negative_ttl_before_token_generation():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None, profile=None):
+            raise AssertionError("invalid query ttl must not reach adapter")
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token?ttl=-1")
+
+    assert response.status_code == 422
+    assert "auth_tokens/" not in response.text
+
+    app.dependency_overrides.clear()
+
+
+def test_live_token_route_failure_is_safe_and_does_not_echo_api_key():
+    from app.routes.token import get_gemini_adapter as token_adapter
+
+    class FakeAdapter:
+        async def generate_ephemeral_token(self, ttl_seconds=None, profile=None):
+            raise RuntimeError("upstream failed for real-backend-api-key")
+
+    app.dependency_overrides[token_adapter] = lambda: FakeAdapter()
+
+    response = client.post("/api/live-token")
+    body = response.text
+
+    assert response.status_code == 503
+    assert "real-backend-api-key" not in body
+    assert "Gemini Live secure connection unavailable" in body
+
+    app.dependency_overrides.clear()
+
+
 def test_debug_event_accepts_counters_without_content():
     payload = {
         "phase": "no-transcript",

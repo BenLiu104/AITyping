@@ -43,7 +43,7 @@ describe('LiveClient WebSockets Integration Tests', () => {
     vi.restoreAllMocks();
   });
 
-  it('should construct and connect with a Live-compatible setup message', () => {
+  it('should connect to the constrained endpoint and send an empty setup frame', () => {
     const client = new LiveClient({
       token: 'test_token',
       model: 'models/gemini-3.1-flash-live-preview',
@@ -57,41 +57,22 @@ describe('LiveClient WebSockets Integration Tests', () => {
 
     expect(wsInstances.length).toBe(1);
     const ws = wsInstances[0];
-    expect(ws.url).toContain('google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent');
+    expect(ws.url).toContain('google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained');
+    expect(ws.url).toContain('access_token=test_token');
+    expect(ws.url).not.toContain('?key=');
 
     ws.readyState = 1;
     ws.onopen?.();
 
     expect(mockOnOpen).toHaveBeenCalled();
     expect(lastMockSend).toHaveBeenCalledTimes(1);
+    // Constrained endpoint: real setup (model / systemInstruction) is locked into
+    // the ephemeral token server-side, so the client only sends an empty setup
+    // frame to trigger setupComplete. It must NOT send model/systemInstruction.
     const sentData = JSON.parse(lastMockSend.mock.calls[0][0]);
-    expect(sentData.setup.model).toBe('models/gemini-3.1-flash-live-preview');
-    expect(sentData.setup.generationConfig.responseModalities).toEqual(['AUDIO']);
-    expect(sentData.setup.inputAudioTranscription).toEqual({});
-  });
-
-  it('should include Cantonese-English transcription hints in setup when requested', () => {
-    const client = new LiveClient({
-      token: 'test_token',
-      model: 'models/gemini-3.1-flash-live-preview',
-      speechProfile: 'cantonese-english',
-      onTranscription: mockOnTranscription,
-      onError: mockOnError,
-      onClose: mockOnClose,
-    });
-
-    client.connect();
-    const ws = wsInstances[0];
-    ws.readyState = 1;
-    ws.onopen?.();
-
-    const sentData = JSON.parse(lastMockSend.mock.calls[0][0]);
-    const instruction = sentData.setup.systemInstruction.parts[0].text;
-    expect(instruction).toContain('Cantonese-English');
-    expect(instruction).toContain('Hong Kong Cantonese');
-    expect(instruction).toContain('Preserve English');
-    expect(instruction).toContain('Never output Japanese kana or Korean Hangul');
-    expect(instruction).not.toContain('Yue');
+    expect(sentData.setup).toEqual({});
+    expect(sentData.setup.model).toBeUndefined();
+    expect(sentData.setup.systemInstruction).toBeUndefined();
   });
 
   it('should notify when Live setup is complete', () => {

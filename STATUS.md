@@ -12,7 +12,7 @@
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
-- **Current work**: UI 改版 + cleanup mode re-run 已 merge 入 `main` 並真機驗收通過。下一步：**加 app icon**（PWA / Home Screen icon）；其餘 Phase 2 gates（真實 history 功能、debug counter 顯示規則等）待續。
+- **Current work**: **Gemini Live 1011 regression 修好並已部署 backend** —— constrained endpoint（`v1alpha` `BidiGenerateContentConstrained`）拒絕 client 送出的任何 setup，正解是把完整 setup（含依 `profile` 的轉錄語言指令）鎖入 ephemeral token 的 `live_connect_constraints.config`，前端只送空 `{setup:{}}`。`/api/live-token` 加 optional `?profile=` 參數；轉錄語言指令由前端搬到後端集中管理。Backend 已 `docker compose up -d --build` 部署並四閘驗證通過（route 端到端 setupComplete）。**下一步：push `uiux` → 觸發 GitHub Pages CI build frontend → Ben iPhone 真機驗 en / 繁中 Live 聽寫。**
 
 ## 2. Current Product Behavior
 
@@ -27,7 +27,7 @@
   - Smart Cleanup 失敗時不影響 raw transcript：錯誤訊息走既有 `errorMsg` state 顯示，cleanup 輸出欄位維持空白，不 crash。
   - Cleanup mode can now be changed after cleanup; frontend reuses saved final transcript and re-runs the appropriate cleanup endpoint. Re-cleanup 只替換 cleaned result，不修改 raw transcript、不重錄、不重跑 STT；失敗時保留舊 cleaned result 並顯示 non-blocking error。
 - **Language routing（本地工作樹）**：
-  - `en` / `zh-Hant` → Gemini Live WebSocket API（`<backend-domain>/api/live-token`）
+  - `en` / `zh-Hant` → Gemini Live WebSocket API（先呼叫 `<backend-domain>/api/live-token` 取得 backend-created short-lived ephemeral token；若 token creation 失敗，frontend 顯示安全錯誤並不連線）
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://<sensevoice-domain>/ws/transcribe-v2`）
 - SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
@@ -46,13 +46,38 @@
 | Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
 | Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
 | SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；**執行路徑＝repo `sensevoice/`（venv + models 由 `setup.sh` 就地重建，可重現）**；Cloudflare Tunnel 直通；CORS open |
-| Gemini Live | ✅ Done | `v1beta` direct WS、`AUDIO` modality、`inputAudioTranscription`、Blob message decode |
+| Gemini Live | ✅ Done | `v1alpha` constrained WS + backend ephemeral token、`AUDIO` modality、`inputAudioTranscription`、Blob message decode；`/api/live-token` fail closed，不再回傳 raw API key。★ 完整 setup（含依 `?profile=` 的轉錄語言指令）鎖入 token `live_connect_constraints.config`，前端只送空 `{setup:{}}`（修 constrained endpoint 拒 client setup 的 1011 regression，route 端到端實測 setupComplete）|
 | Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
 | Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
 | Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；「柔和生活風」主畫面 UI 改版本地完成（layout-only，tests/typecheck/build 全綠，未 deploy / 未真機驗收）；其餘 Phase 2 gates（history 真實功能、debug counters 顯示規則等）待續 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-08 15:00 PDT — Gemini Live 1011 regression 修好（constrained endpoint setup 鎖入 token）
+- 根因：v1alpha BidiGenerateContentConstrained WS 拒絕 client 送出的任何 setup（連空 {} 亦 1011）。正解＝完整 setup 鎖入 ephemeral token 的 live_connect_constraints.config，前端只送空 {setup:{}}。
+- backend（container 內）: python -m pytest 32/32 ✅（新增 profile route forward / unknown-profile normalize / 5 條 parametrized instruction-by-profile）; ruff check ✅
+- frontend canonical: typecheck ✅ / oxlint 0 warn ✅ / vitest 48/48 ✅（刪 1 條過時 client-side systemInstruction test）/ build ✅（PWA precache 13 entries）
+- ★ 端到端實測（真 Google endpoint，經真 /api/live-token route）：english / cantonese-english / auto profile 全部回 setupComplete ✅（rebuild 前同一 route 1011，rebuild 後 setupComplete＝新 code 已上線鐵證）
+- backend 部署：docker compose up -d --build backend → 四閘全通（container Up:8000 / startup complete 無 traceback / GET /health 200 / route setupComplete）
+- 未驗證：iPhone Safari 真機 en / 繁中 Live 聽寫（待 frontend CI deploy 後 Ben 真機）
+```
+
+```text
+2026-07-08 11:05 PDT — Gemini Live raw API key fallback removed
+- backend: .venv python -m pytest 22/22 ✅（新增 auth_tokens.create success/failure + route safe-failure regressions）
+- frontend focused: npm run test -- --run src/test/app.test.tsx src/live/live-client.test.ts 43/43 ✅
+- frontend: npm run typecheck ✅
+- frontend: npm run build ✅（vite production bundle built, PWA precache 6 entries）
+- lints: edited backend/frontend files no IDE lint errors ✅
+- production bundle grep: `GEMINI_API_KEY` / `GOOGLE_API_KEY` / `VITE_*GEMINI` / `VITE_*GOOGLE` / `AIza` all 0 matches ✅
+- SDK surface check: installed `google-genai` exposes `client.auth_tokens` ✅
+- local actual-key scan: repo `.env` not present, so no real key value available to scan
+- backend/scripts/verify_live_ephemeral_token.py smoke: exits non-zero safely without `.env` (`ValueError: API Key 缺失`), prints no secret
+- follow-up TTL validation fix: backend pytest 25/25 ✅; `ruff check` edited backend files ✅; route rejects `ttl=-1` with 422 and adapter rejects `ttl_seconds <= 0` before SDK call
+- 未驗證：real Gemini `auth_tokens.create` against production `.env` / billing-enabled API key
+```
 
 ```text
 2026-07-07 18:09 UTC — Cleanup mode re-run after cleanup (merged uixi → main)
@@ -162,6 +187,7 @@
 - **Do not re-add Docker cloudflared connector**：Tunnel 用 host systemd `cloudflared.service`。
 - **Do not use MediaRecorder**：Live API 依賴 AudioWorklet raw PCM。
 - **Do not parse WS messages as string-only**：Browser 可能交付 Blob；需 normalize 後再 JSON.parse。
+- **Gemini Live token endpoint must fail closed**：`/api/live-token` 只能回傳 backend 用 `google-genai` `auth_tokens.create` 建立的 short-lived `auth_tokens/...` ephemeral token；任何 SDK/API/config failure 都不可 fallback 到 raw `GEMINI_API_KEY`，route response 亦不可 echo token / key / exception detail。
 - **GitHub Pages deploy 有兩層 branch 限制，唔係改 workflow YAML 就夠**：`deploy-frontend.yml` 嘅 `on.push.branches` 淨係控制邊個 branch 觸發 workflow；GitHub repo Settings → Environments → `github-pages` 仲有獨立嘅 deployment branch policy（`gh api repos/BenLiu104/AITyping/environments/github-pages/deployment-branch-policies` 查），呢層淨係允許已列入白名單嘅 branch 真正 deploy，唔喺白名單會 workflow 綠燈但 deploy step 2 秒內以 `environment protection rules` 拒絕。切 deploy trigger branch 時兩層都要對齊。
 
 ## 6. Next Steps
@@ -171,9 +197,10 @@
    - cleanup mode re-run UX 已 merge 並真機驗收通過（轉 mode 可流暢改變 cleanup 結果）
    - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
-2. **加 app icon（👈 下一步要做）**
-   - PWA / iOS Home Screen icon（目前應為預設 / 缺失）；配合「柔和生活風」暖米白 `#FFF9EF` + 綠 accent 配色
-   - 涉及 `frontend/public/` icon 資產 + manifest（`vite.config.ts` PWA `icons`）；注意 iOS `apple-touch-icon`
+2. **加 app icon（✅ 完成，`uiux` branch，未真機驗收）**
+   - 由單張 1254² 原圖 resize 出全套：`pwa-64/192/512`、`maskable-512`（80% safe zone）、`apple-touch-icon-180`、`favicon.ico/png`，全部米白底配「柔和生活風」
+   - 修正 `vite.config.ts` manifest icon 引用 bug（typo `512x1512` + 唔存在的 `mask-icon.svg`）；`index.html` 加 `apple-touch-icon` link
+   - build precache 6 → 13 entries，typecheck / test 48 / build 全綠；**未 iOS Home Screen 真機裝過**
 
 3. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt

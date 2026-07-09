@@ -463,9 +463,16 @@ export default function App() {
       } else {
         // ── Gemini Live API mode (English / Mandarin) ──
         setLiveStatus('正在連線 Live API...');
-        const tokenRes = await fetch(`${API_BASE}/api/live-token`, { method: 'POST' });
+        // profile 隨 token 請求送出：轉錄 systemInstruction 已改為在簽發 ephemeral
+        // token 時鎖入 live_connect_constraints（constrained endpoint 會忽略 client
+        // 端 setup），故語言指令必須在此帶上，而非由前端 setup frame 送出。
+        const liveProfile = getSpeechProfile(language);
+        const tokenRes = await fetch(
+          `${API_BASE}/api/live-token?profile=${encodeURIComponent(liveProfile)}`,
+          { method: 'POST' },
+        );
         if (!tokenRes.ok) {
-          throw new Error('無法取得連線 Token (Live Token API 呼叫失敗)');
+          throw new Error('無法建立 Gemini Live 安全連線，請稍後再試');
         }
         const tokenData = await tokenRes.json();
 
@@ -481,7 +488,6 @@ export default function App() {
         client = new LiveClient({
           token: tokenData.token,
           model: tokenData.model,
-          speechProfile: getSpeechProfile(language),
           onOpen: () => {
             updateDebugSnapshot({ wsOpen: true });
             setLiveStatus('Live API 已連線，正在準備聽寫...');

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.gemini.adapter import GeminiAdapter
@@ -31,21 +31,34 @@ class TokenResponse(BaseModel):
 
 @router.post("/live-token", response_model=TokenResponse, tags=["Gemini"])
 async def get_live_token(
-    ttl: Optional[int] = None,
+    ttl: Optional[int] = Query(default=None, ge=1),
+    profile: Optional[str] = Query(
+        default=None,
+        description="轉錄語言 profile：english / cantonese / cantonese-english / auto",
+    ),
     adapter: GeminiAdapter = Depends(get_gemini_adapter),
 ):
-    """簽發用於前端瀏覽器直連 Gemini Live API WebSocket 的短效 Ephemeral Token"""
+    """簽發用於前端瀏覽器直連 Gemini Live API WebSocket 的短效 Ephemeral Token
+
+    profile 依前端語言模式將對應轉錄指令鎖入 token 的 live_connect_constraints；
+    未知或缺省的 profile 一律回退為通用轉錄指令（不 fail）。
+    """
+    normalized_profile = (
+        profile if profile in GeminiAdapter.LIVE_SPEECH_PROFILES else None
+    )
     try:
-        token_data = await adapter.generate_ephemeral_token(ttl_seconds=ttl)
+        token_data = await adapter.generate_ephemeral_token(
+            ttl_seconds=ttl, profile=normalized_profile
+        )
         return TokenResponse(
             token=token_data["token"],
             expiresAt=token_data["expiresAt"],
             model=token_data["model"],
         )
-    except NotImplementedError as e:
-        # 當 SDK 還不支援真實 token 簽發時，如果正處於非 Mock，給予 501
-        raise HTTPException(status_code=501, detail=str(e))
-    except Exception as e:
+    except Exception:
+        # Fail closed: never echo adapter errors because SDK messages could
+        # contain credential-like values. The frontend only needs a safe failure.
         raise HTTPException(
-            status_code=500, detail=f"簽署 Ephemeral Token 失敗: {str(e)}"
+            status_code=503,
+            detail="Gemini Live secure connection unavailable; please try again later",
         )

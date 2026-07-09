@@ -25,6 +25,126 @@ async def test_gemini_adapter_mock_mode():
 
 
 @pytest.mark.asyncio
+async def test_generate_ephemeral_token_uses_auth_tokens_create(monkeypatch):
+    captured = {}
+
+    class FakeAuthTokens:
+        def create(self, *, config):
+            captured["config"] = config
+
+            class Token:
+                name = "auth_tokens/test-ephemeral-token"
+
+            return Token()
+
+    class FakeClient:
+        def __init__(self, *, api_key, http_options):
+            captured["api_key"] = api_key
+            captured["http_options"] = http_options
+            self.auth_tokens = FakeAuthTokens()
+
+    monkeypatch.setattr("app.gemini.adapter.genai.Client", FakeClient)
+
+    adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
+    adapter.mock_mode = False
+
+    result = await adapter.generate_ephemeral_token(
+        ttl_seconds=3600, profile="english"
+    )
+
+    assert result["token"] == "auth_tokens/test-ephemeral-token"
+    assert result["token"] != "real-backend-api-key"
+    assert result["model"] == "models/gemini-3.1-flash-live-preview"
+    assert captured["api_key"] == "real-backend-api-key"
+    assert captured["http_options"] == {"api_version": "v1alpha"}
+    assert captured["config"]["uses"] == 1
+    assert captured["config"]["http_options"] == {"api_version": "v1alpha"}
+    # Constrained endpoint ignores client-sent setup, so model + full setup
+    # (responseModalities / inputAudioTranscription / systemInstruction) must be
+    # locked into the token at mint time.
+    constraints = captured["config"]["live_connect_constraints"]
+    assert constraints["model"] == "models/gemini-3.1-flash-live-preview"
+    cfg = constraints["config"]
+    assert cfg["responseModalities"] == ["AUDIO"]
+    assert cfg["inputAudioTranscription"] == {}
+    instruction = cfg["systemInstruction"]["parts"][0]["text"]
+    assert "Transcribe" in instruction
+    # english profile hint locked into the token's system instruction
+    assert "The user speaks English" in instruction
+
+
+@pytest.mark.parametrize(
+    "profile,expected_snippets,absent_snippets",
+    [
+        (
+            "cantonese-english",
+            ["Cantonese-English", "Hong Kong Cantonese", "Never output Japanese"],
+            ["Yue"],
+        ),
+        (
+            "cantonese",
+            ["The user speaks Hong Kong Cantonese", "Never output Japanese"],
+            ["Yue"],
+        ),
+        ("english", ["The user speaks English"], []),
+        # Unknown / auto profiles fall back to the base verbatim instruction only.
+        ("auto", ["Transcribe"], ["Hong Kong", "The user speaks English"]),
+        (None, ["Transcribe"], ["Hong Kong", "The user speaks English"]),
+    ],
+)
+def test_build_transcription_instruction_by_profile(
+    profile, expected_snippets, absent_snippets
+):
+    adapter = GeminiAdapter(mock_mode=True)
+    instruction = adapter._build_transcription_instruction(profile)
+    for snippet in expected_snippets:
+        assert snippet in instruction
+    for snippet in absent_snippets:
+        assert snippet not in instruction
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ttl_seconds", [-60, 0])
+async def test_generate_ephemeral_token_rejects_non_positive_ttl(
+    ttl_seconds, monkeypatch
+):
+    class FakeClient:
+        def __init__(self, *, api_key, http_options):
+            raise AssertionError("invalid ttl must be rejected before SDK call")
+
+    monkeypatch.setattr("app.gemini.adapter.genai.Client", FakeClient)
+
+    adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
+    adapter.mock_mode = False
+
+    with pytest.raises(ValueError) as excinfo:
+        await adapter.generate_ephemeral_token(ttl_seconds=ttl_seconds)
+
+    assert "positive integer" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_generate_ephemeral_token_failure_never_returns_api_key(monkeypatch):
+    class FakeClient:
+        def __init__(self, *, api_key, http_options):
+            self.auth_tokens = self
+
+        def create(self, *, config):
+            raise RuntimeError("upstream rejected real-backend-api-key")
+
+    monkeypatch.setattr("app.gemini.adapter.genai.Client", FakeClient)
+
+    adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
+    adapter.mock_mode = False
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await adapter.generate_ephemeral_token()
+
+    assert "real-backend-api-key" not in str(excinfo.value)
+    assert "[REDACTED]" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
 async def test_cleanup_prompt_repairs_cantonese_english_asr_without_yue_label():
     captured = {}
 
