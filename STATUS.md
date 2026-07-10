@@ -6,13 +6,13 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版 + cleanup mode re-run UX 已完成並 merge 入 `main`；UI 改版 Ben 已確認「效果都 ok」
-- **Branch**: `refactor/recording-session-boundary`（Task 6 cleanup boundary 已含於此 branch；Task 7 recording session 已完成，待 Ben review / merge）
+- **Branch**: `refactor/project-structure-integration`（Task 8 最終整合 branch，自 `main` 開出，以 `--no-ff` 併入 7 個已完成獨立 refactor branch：Task 1 trace-privacy + Task 4 docs、Task 2 gate truthfulness、Task 3 docker context hygiene、Task 5 scaffold hygiene、Task 6 cleanup boundary + Task 7 recording session）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
-- **Current work**: **Gemini Live 1011 regression 修好並已部署 backend** —— constrained endpoint（`v1alpha` `BidiGenerateContentConstrained`）拒絕 client 送出的任何 setup，正解是把完整 setup（含依 `profile` 的轉錄語言指令）鎖入 ephemeral token 的 `live_connect_constraints.config`，前端只送空 `{setup:{}}`。`/api/live-token` 加 optional `?profile=` 參數；轉錄語言指令由前端搬到後端集中管理。Backend 已 `docker compose up -d --build` 部署並四閘驗證通過（route 端到端 setupComplete）。**下一步：push `uiux` → 觸發 GitHub Pages CI build frontend → Ben iPhone 真機驗 en / 繁中 Live 聽寫。**
+- **Current work**: **Task 8 專案結構最終整合** —— 7 個獨立 refactor branch 依相依序以 `--no-ff` 併入 `refactor/project-structure-integration`，僅解決真實 merge 衝突（STATUS / CHANGELOG 文件 coherence），source task commit 不 amend、不 squash、branch 不刪。整合後跑全套非服務驗證（frontend typecheck/lint/test/build、backend ruff/pytest、sensevoice unittest、`check.sh phase1`、docker build、`git diff --check`）。**整合層驗證結果見下方 Verification Snapshot；iPhone Safari 真機（en/繁中 Live + yue/mixed SenseVoice 聽寫、Home Screen PWA icon）仍待 Ben 真機驗收。**
 
 ## 2. Current Product Behavior
 
