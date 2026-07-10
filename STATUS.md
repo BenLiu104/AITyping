@@ -29,7 +29,7 @@
 - **Language routing（本地工作樹）**：
   - `en` / `zh-Hant` → Gemini Live WebSocket API（先呼叫 `<backend-domain>/api/live-token` 取得 backend-created short-lived ephemeral token；若 token creation 失敗，frontend 顯示安全錯誤並不連線）
   - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://<sensevoice-domain>/ws/transcribe-v2`）
-- SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。
+- SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。**預設不保留 raw PCM，亦不寫 WAV／JSONL／transcript summary 到 disk**；只有 operator 明確設定 `SENSEVOICE_DEBUG_TRACE=1` 的診斷 process，或測試注入 trace factory，才啟用 trace。
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
 - Live transcript panel 現在顯示 `final + interim`，避免第一句 finalized 後把第二句 partial 完全遮住。
 - SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
@@ -53,6 +53,14 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-10 02:48 PDT — SenseVoice v2 default raw-audio trace disabled（local only，未部署）
+- RED: venv/bin/python -m unittest tests.test_ws_v2.StreamingTranscriptionBridgeTests.test_default_bridge_trace_is_noop_and_never_creates_trace_directory tests.test_ws_v2.StreamingTranscriptionBridgeTests.test_bridge_forwards_trace_lifecycle_to_injected_trace_factory -v → 預設 trace 嘗試寫 JSONL，且 bridge 未接受 trace_factory（預期失敗）
+- GREEN: 同一聚焦 command 2/2 ✅；預設 bridge 不建立測試 trace 目錄、不持有 raw_audio，injected fake trace 收到完整 lifecycle。
+- full: cd sensevoice && venv/bin/python -m unittest tests.test_ws_v2 -v → 4/4 ✅。
+- 未驗證：iPhone Safari 真機／production service 未重新驗證；本 task 沒有 deploy、restart 或檢查既有 `/tmp/sv-debug` artifacts。
+```
 
 ```text
 2026-07-08 15:00 PDT — Gemini Live 1011 regression 修好（constrained endpoint setup 鎖入 token）
@@ -92,7 +100,7 @@
 2026-07-06 20:12 PDT — SenseVoice 執行路徑遷移到 repo + 可重現部署工具鏈（commit 9e079bf）
 - 遷移：systemd unit WorkingDirectory/ExecStart 由 experiment/voice_test → repo sensevoice/；restart 後 NRestarts=0（無 crash loop）
 - /ping: {"model_loaded":true,"status":"ok"}，連續多次 stable；running process cwd=repo sensevoice/，用 repo venv/bin/python
-- WS end-to-end: /ws/transcribe-v2 connection opened→trace saved→closed 200；trace language=yue、chunk_count=34、total_bytes=32000（合成 sine 非語音故 final_count=0，屬正確）
+- WS end-to-end（歷史 deployment snapshot，當時 trace 為預設開啟）：/ws/transcribe-v2 connection opened→trace saved→closed 200；trace language=yue、chunk_count=34、total_bytes=32000（合成 sine 非語音故 final_count=0，屬正確）。現行 code 預設不再落 disk trace。
 - setup.sh: fresh venv 建成 → 全 import OK；systemd-env smoke test model_loaded:true
 - fetch_models.py: 隔離 dogfood 由 ModelScope iic/*（pinned）下載 → sha256 7/7 OK
 - ad-hoc verify script: 25/25 PASS（setup.sh/requirements/models.sha256/template/live-service/ERRORS）
@@ -204,7 +212,7 @@
 
 3. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt
-   - SenseVoice v2（`v01:35`）持續觀察中；若出現漏句 / stop finalize 問題，先讀 `/tmp/sv-debug/*.summary.json` 對照 production trace
+   - SenseVoice v2 預設不落 disk trace；如 operator 明確暫時啟用 `SENSEVOICE_DEBUG_TRACE=1` 做診斷，才按其 trace 輸出排查漏句／stop-finalize；不要檢查或依賴既有 raw-audio artifacts
    - 舊 `/ws/transcribe` route 保留作回退
 
 4. **Phase 3 準備（⏭️ 之後）**

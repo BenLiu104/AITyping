@@ -6,7 +6,7 @@
 > - **Public**: `https://<sensevoice-domain>`（Cloudflare Tunnel）
 > - **Internal**: `http://<vps>:8082`
 > - **Service**: `sensevoice-api.service`
-> - **API 教學**: 見 `README.md`
+> - **API 合約 / 操作指引**: 見 `README.md`
 
 ---
 
