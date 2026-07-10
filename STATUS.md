@@ -6,7 +6,7 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版 + cleanup mode re-run UX 已完成並 merge 入 `main`；UI 改版 Ben 已確認「效果都 ok」
-- **Branch**: `refactor/cleanup-boundary`（Task 6 已完成，待 Ben review / merge）
+- **Branch**: `refactor/recording-session-boundary`（Task 6 cleanup boundary 已含於此 branch；Task 7 recording session 已完成，待 Ben review / merge）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
@@ -53,6 +53,16 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-10 09:30 PDT — Task 7: extract recording session (refactor/recording-session-boundary)
+- 新增 frontend/src/features/recording/use-recording-session.ts（useRecordingSession hook：mic/AudioWorklet/STT 生命週期唯一擁有者）
+- 新增 frontend/src/features/recording/use-recording-session.test.ts（7 focused tests：permission priming / real start route 選擇 / AudioWorklet late-message gate after stop / client finalize+teardown / unmount 資源清理）
+- App.tsx 縮為 page coordinator：保留 UI JSX + transcript/error/status/debug state + cleanup 整合；透過 typed callback contract 驅動 hook。兩個 transport client 不合併；public/pcm-processor.js 零改動；endpoint/payload/protocol/model 邏輯零改動
+- TDD RED→GREEN：先寫 hook 測試（module 未解析 → 1 failed），實作後 7/7 綠
+- typecheck ✅ / oxlint 0 warn ✅ / vitest 77/77（新 7 + 既有 70 全保留）✅ / build ✅（PWA precache 13 entries）
+- git diff --check ✅；**未做 iPhone Safari 真機驗收**（en/繁中 Live + yue/mixed SenseVoice 真機聽寫待 Ben 驗）
+```
 
 ```text
 2026-07-10 09:08 PDT — Task 6: extract cleanup boundary (refactor/cleanup-boundary) — 修復後

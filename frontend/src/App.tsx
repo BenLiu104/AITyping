@@ -1,37 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Copy, Check, Settings, ChevronDown, Sparkles, Trash2, Sprout, Tag, Globe, History, AudioLines } from 'lucide-react';
 import { Mode, Language } from './types';
-import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
-import { LiveClient, type SpeechProfile } from './live/live-client';
-import { SenseVoiceWsClient } from './live/sensevoice-ws-client';
 import { useCleanup } from './features/cleanup/use-cleanup';
+import {
+  useRecordingSession,
+  createDebugSnapshot,
+  type LiveDebugSnapshot,
+} from './features/recording/use-recording-session';
 
 const BUILD_LABEL = 'v01:35';
 
 // API base URL: 在 GitHub Pages 上指向 VPS backend，local dev 則用空字串走同源
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-
-// SenseVoice WebSocket endpoint（廣東話 STT）。由 build-time env 注入，
-// 未設定時 fallback 去同源 /ws（local dev 用）。
-const SENSEVOICE_WS_URL =
-  import.meta.env.VITE_SENSEVOICE_WS_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.origin.replace(/^http/, 'ws')}/ws/transcribe-v2`
-    : '');
-
-const getSpeechProfile = (language: Language): SpeechProfile => {
-  if (language === 'mixed') return 'cantonese-english';
-  if (language === 'yue') return 'cantonese';
-  if (language === 'en') return 'english';
-  return 'auto';
-};
-
-const getSenseVoiceLanguage = (language: Language): string => {
-  if (language === 'mixed') return 'auto';
-  if (language === 'yue') return 'yue';
-  if (language === 'en') return 'en';
-  return 'zh';
-};
 
 // Display labels for the front-page selector rows (native <select> logic unchanged).
 const MODE_LABELS: Record<Mode, string> = {
@@ -83,33 +63,6 @@ const simulateMockCleanup = (raw: string, currentMode: Mode, currentLang: Langua
   return `${cleaned}`;
 };
 
-type LiveDebugSnapshot = {
-  wsOpen: boolean;
-  setupComplete: boolean;
-  audioChunks: number;
-  audioBytes: number;
-  audioSent: number;
-  transcriptEvents: number;
-  streamEndSent: boolean;
-  streamEndAck: boolean;
-  lastCloseCode?: number;
-  lastCloseReason: string;
-  lastError: string;
-};
-
-const createDebugSnapshot = (): LiveDebugSnapshot => ({
-  wsOpen: false,
-  setupComplete: false,
-  audioChunks: 0,
-  audioBytes: 0,
-  audioSent: 0,
-  transcriptEvents: 0,
-  streamEndSent: false,
-  streamEndAck: false,
-  lastCloseReason: '',
-  lastError: '',
-});
-
 export default function App() {
   // Settings & Options state
   const [mode, setMode] = useState<Mode>('semantic');
@@ -146,19 +99,10 @@ export default function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [showHistoryPlaceholder, setShowHistoryPlaceholder] = useState<boolean>(false);
 
-  // Audio & WebSocket Pipeline References
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const liveClientRef = useRef<LiveClient | SenseVoiceWsClient | null>(null);
-  const transcriptRef = useRef<string>('');
-  const isPrimingMicPermissionRef = useRef<boolean>(false);
-  const isMicPrimedForSessionRef = useRef<boolean>(false);
-  const isCaptureActiveRef = useRef<boolean>(false);
+  // App-owned debug snapshot: recording telemetry is surfaced in the debug row,
+  // so the React state + its mirror ref live here; the recording hook writes into
+  // it through the resetDebugSnapshot/updateDebugSnapshot/getDebugSnapshot contract.
   const liveDebugRef = useRef<LiveDebugSnapshot>(createDebugSnapshot());
-
-  // Mock Mode generator timeout ref
-  const mockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto copy effect
   useEffect(() => {
@@ -168,14 +112,6 @@ export default function App() {
       }
     }
   }, [cleanedText, copied, vibrationEnabled]);
-
-  // Clean up audio references on unmount
-  useEffect(() => {
-    return () => {
-      cleanupAudioPipeline();
-      if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
-    };
-  }, []);
 
   // Recording timer (display only) — resets on each new recording, clears on stop.
   useEffect(() => {
@@ -191,49 +127,11 @@ export default function App() {
     return () => clearInterval(id);
   }, [isRecording]);
 
-  const cleanupAudioPipeline = (disconnectLiveClient = true) => {
-    isCaptureActiveRef.current = false;
-    if (audioWorkletNodeRef.current) {
-      audioWorkletNodeRef.current.port.onmessage = null;
-      audioWorkletNodeRef.current.disconnect();
-      audioWorkletNodeRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (audioContextRef.current) {
-      if (audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-      }
-      audioContextRef.current = null;
-    }
-    if (disconnectLiveClient && liveClientRef.current) {
-      liveClientRef.current.disconnect();
-      liveClientRef.current = null;
-    }
-  };
-
   const triggerVibe = (ms: number) => {
     if (vibrationEnabled && typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(ms);
     }
   };
-
-  const waitForTranscript = async (timeoutMs: number) => {
-    const startedAt = Date.now();
-    while (!transcriptRef.current.trim() && Date.now() - startedAt < timeoutMs) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  };
-
-  const requestMicStream = () => navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    }
-  });
 
   const resetDebugSnapshot = () => {
     liveDebugRef.current = createDebugSnapshot();
@@ -258,327 +156,37 @@ export default function App() {
     }
   };
 
-  const primeMicPermission = async () => {
-    if (isPrimingMicPermissionRef.current) return;
-
-    isPrimingMicPermissionRef.current = true;
-    setAppErrorMsg('');
-    setLiveStatus('正在請求麥克風授權...');
-
-    try {
-      const stream = await requestMicStream();
-      stream.getTracks().forEach(track => track.stop());
-      isMicPrimedForSessionRef.current = true;
-      setLiveStatus('麥克風已授權，請重新點一下開始錄音');
-      triggerVibe(30);
-    } catch (err: unknown) {
-      setLiveStatus('');
-      setAppErrorMsg(err instanceof Error ? err.message : '麥克風授權失敗，請允許 Safari 使用麥克風');
-    } finally {
-      isPrimingMicPermissionRef.current = false;
-      setIsRecording(false);
-    }
-  };
-
-  // Mock Mode Simulator for Speech-to-Text
-  const startMockRecording = () => {
-    clearError();
-    setAppErrorMsg('');
-    setInterimTranscript('正在聽寫...');
-    setFinalTranscript('');
-
-    const mockPhrases = [
-      '今日天氣真係幾好啊 ',
-      'by the way ',
-      '聽日我哋幾點見面？ ',
-      'let me check my calendar ',
-      '唔好意思遲咗覆你。'
-    ];
-    let currentIdx = 0;
-
-    mockIntervalRef.current = setInterval(() => {
-      if (currentIdx < mockPhrases.length) {
-        const nextPhrase = mockPhrases[currentIdx];
-        setInterimTranscript((prev) => prev + nextPhrase);
-        setFinalTranscript((prev) => prev + nextPhrase);
-        triggerVibe(10);
-        currentIdx++;
-      } else {
-        if (mockIntervalRef.current) clearInterval(mockIntervalRef.current);
-      }
-    }, 1200);
-  };
-
-  const stopMockRecording = async () => {
-    if (mockIntervalRef.current) {
-      clearInterval(mockIntervalRef.current);
-    }
-    setInterimTranscript('');
-
-    // Call Mock Cleanup or Real VPS /api/cleanup
-    triggerVibe(50);
-
-    const textToClean = finalTranscript || '今日天氣真係幾好啊 by the way 聽日我哋幾點見面？ let me check my calendar 唔好意思遲咗覆你。';
-    const targetMode = mode;
-    const targetLanguage = language;
-
-    await hookRunCleanup(textToClean, targetMode, targetLanguage);
-    triggerVibe(40);
-  };
-
-  // Real Audio Pipeline Setup (iOS Safari Compliant)
-  const startRealRecording = async () => {
-    clearError();
-    setAppErrorMsg('');
-    setLiveStatus('正在連線 Live API...');
-    resetDebugSnapshot();
-    setInterimTranscript('');
-    setFinalTranscript('');
-    transcriptRef.current = '';
-
-    try {
-      // 1. Request mic permission first. iOS Safari is strict: getUserMedia must
-      // stay directly inside the user gesture path, before unrelated awaits.
-      const stream = await requestMicStream();
-      mediaStreamRef.current = stream;
-      isCaptureActiveRef.current = true;
-
-      // Shared variables set inside the branch below, used by the common
-      // worklet pipeline that follows the if/else.
-      const useSenseVoice = language === 'yue' || language === 'mixed';
-      let audioContext: AudioContext;
-      let client: LiveClient | SenseVoiceWsClient;
-      let inputSampleRate: number;
-
-      if (useSenseVoice) {
-        // ── SenseVoice mode (Cantonese / mixed) — no ephemeral token needed ──
-        setLiveStatus('正在連線 SenseVoice...');
-
-        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioContextRef.current = audioContext;
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-        inputSampleRate = audioContext.sampleRate;
-
-        client = new SenseVoiceWsClient({
-          wsUrl: SENSEVOICE_WS_URL,
-          language: getSenseVoiceLanguage(language),
-          onOpen: () => {
-            updateDebugSnapshot({ wsOpen: true });
-            setLiveStatus('SenseVoice 已就緒，請開始說話...');
-          },
-          onAudioSent: () => {
-            updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
-          },
-          onEndSent: () => {
-            updateDebugSnapshot({ streamEndSent: true });
-          },
-          onEndAck: () => {
-            updateDebugSnapshot({ streamEndAck: true });
-          },
-          onTranscription: (text, isFinal) => {
-            updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
-            setLiveStatus('');
-            if (isFinal) {
-              transcriptRef.current += text;
-              setFinalTranscript(transcriptRef.current);
-              setInterimTranscript('');
-            } else {
-              setInterimTranscript(text);
-            }
-          },
-          onError: (err) => {
-            updateDebugSnapshot({ lastError: err });
-            if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
-              return;
-            }
-            setAppErrorMsg(err);
-            cleanupAudioPipeline();
-            setIsRecording(false);
-          },
-          onClose: (_code, _reason) => {
-            updateDebugSnapshot({ lastCloseCode: _code, lastCloseReason: _reason || '' });
-            console.log('SenseVoice closed.');
-          }
-        });
-
-        liveClientRef.current = client;
-        client.connect();
-      } else {
-        // ── Gemini Live API mode (English / Mandarin) ──
-        setLiveStatus('正在連線 Live API...');
-        // profile 隨 token 請求送出：轉錄 systemInstruction 已改為在簽發 ephemeral
-        // token 時鎖入 live_connect_constraints（constrained endpoint 會忽略 client
-        // 端 setup），故語言指令必須在此帶上，而非由前端 setup frame 送出。
-        const liveProfile = getSpeechProfile(language);
-        const tokenRes = await fetch(
-          `${API_BASE}/api/live-token?profile=${encodeURIComponent(liveProfile)}`,
-          { method: 'POST' },
-        );
-        if (!tokenRes.ok) {
-          throw new Error('無法建立 Gemini Live 安全連線，請稍後再試');
-        }
-        const tokenData = await tokenRes.json();
-
-        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioContextRef.current = audioContext;
-
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-
-        inputSampleRate = audioContext.sampleRate;
-
-        client = new LiveClient({
-          token: tokenData.token,
-          model: tokenData.model,
-          onOpen: () => {
-            updateDebugSnapshot({ wsOpen: true });
-            setLiveStatus('Live API 已連線，正在準備聽寫...');
-          },
-          onSetupComplete: () => {
-            updateDebugSnapshot({ setupComplete: true });
-            setLiveStatus('連線成功，請開始說話...');
-          },
-          onAudioSent: () => {
-            updateDebugSnapshot({ audioSent: liveDebugRef.current.audioSent + 1 });
-          },
-          onTranscription: (text, isFinal) => {
-            updateDebugSnapshot({ transcriptEvents: liveDebugRef.current.transcriptEvents + 1 });
-            setLiveStatus('');
-            if (isFinal) {
-              transcriptRef.current += text;
-              setFinalTranscript(transcriptRef.current);
-              setInterimTranscript('');
-            } else {
-              setInterimTranscript(text);
-            }
-          },
-          onError: (err) => {
-            updateDebugSnapshot({ lastError: err });
-            void postDebugEvent('error');
-            if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
-              return;
-            }
-            setAppErrorMsg(err);
-            cleanupAudioPipeline();
-            setIsRecording(false);
-          },
-          onClose: (code, reason) => {
-            updateDebugSnapshot({ lastCloseCode: code, lastCloseReason: reason || '' });
-            void postDebugEvent('close');
-            console.log('WS Connection closed.');
-          }
-        });
-
-        liveClientRef.current = client;
-        client.connect();
-      }
-
-      // 5. Connect Worklet Processor (common to both engines)
-      await audioContext.audioWorklet.addModule(`${import.meta.env.BASE_URL}pcm-processor.js`);
-      const source = audioContext.createMediaStreamSource(stream);
-      const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-      audioWorkletNodeRef.current = workletNode;
-
-      // Pipe Float32 buffer array data from worklet node
-      workletNode.port.onmessage = (event) => {
-        if (!isCaptureActiveRef.current) return;
-        const float32Data = event.data;
-        // Resample and convert
-        const resampled = resampleTo16k(float32Data, inputSampleRate);
-        const pcmBuffer = floatTo16BitPCM(resampled);
-        updateDebugSnapshot({
-          audioChunks: liveDebugRef.current.audioChunks + 1,
-          audioBytes: liveDebugRef.current.audioBytes + pcmBuffer.byteLength,
-        });
-        // Send via STT client
-        client.sendAudioChunk(pcmBuffer);
-      };
-
-      source.connect(workletNode);
-      workletNode.connect(audioContext.destination); // Required on some Safari versions to keep active
-
-    } catch (err: unknown) {
-      console.error(err);
-      const message = err instanceof Error ? err.message : '麥克風或 WebSocket 管道初始化失敗';
-      setAppErrorMsg(message);
-      cleanupAudioPipeline();
-      setIsRecording(false);
-    }
-  };
-
-  const getVisibleTranscript = () => `${finalTranscript}${interimTranscript}`;
-
-  const stopRealRecording = async () => {
-    const useSenseVoice = language === 'yue' || language === 'mixed';
-    let finalText = '';
-
-    if (useSenseVoice) {
-      // ── SenseVoice stop: flush remaining buffer + wait for all in-flight ──
-      const svClient = liveClientRef.current as SenseVoiceWsClient | null;
-      cleanupAudioPipeline(false);
-      svClient?.sendAudioStreamEnd();
-      setLiveStatus('正在等待最後聽寫...');
-
-      finalText = await svClient?.waitForCompletion() || '';
-      if (!finalText.trim()) {
-        finalText = `${transcriptRef.current}${interimTranscript}` || getVisibleTranscript();
-      }
-
-      if (liveClientRef.current) {
-        liveClientRef.current.disconnect();
-        liveClientRef.current = null;
-      }
-    } else {
-      // ── Gemini Live stop: send stream end, wait for final transcript ──
-      liveClientRef.current?.sendAudioStreamEnd();
-
-      // Stop local capture immediately, but keep the WebSocket alive briefly so
-      // Gemini can flush the final inputTranscription after audioStreamEnd.
-      cleanupAudioPipeline(false);
-      setLiveStatus('正在等待最後聽寫...');
-      await waitForTranscript(3500);
-
-      finalText = transcriptRef.current || finalTranscript || interimTranscript;
-
-      if (liveClientRef.current) {
-        liveClientRef.current.disconnect();
-        liveClientRef.current = null;
-      }
-    }
-
-    // ── Common: send to Gemini cleanup API ──
-    if (!finalText.trim()) {
-      await postDebugEvent('no-transcript');
-      setLiveStatus('未收到聽寫文字，請再試一次或講近一點');
-      return;
-    }
-
-    await postDebugEvent('transcript-ready');
-    setLiveStatus('');
-    triggerVibe(50);
-
-    await hookRunCleanup(finalText, mode, language);
-    triggerVibe(40);
-  };
+  // Recording/STT lifecycle boundary — owns mic, AudioWorklet, and both STT
+  // transports. App drives it through this typed callback contract and keeps
+  // ownership of the UI state (transcript/status/error/debug) below.
+  const recording = useRecordingSession({
+    setInterimTranscript,
+    setFinalTranscript,
+    setLiveStatus,
+    setAppErrorMsg,
+    setIsRecording,
+    resetDebugSnapshot,
+    updateDebugSnapshot,
+    getDebugSnapshot: () => liveDebugRef.current,
+    runCleanup: hookRunCleanup,
+    clearCleanupError: clearError,
+    triggerVibe,
+    postDebugEvent,
+    getInterimTranscript: () => interimTranscript,
+    getFinalTranscript: () => finalTranscript,
+  });
 
   const handleMicPress = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
     if (isRecording) {
       setIsRecording(false);
-      if (mockMode) {
-        void stopMockRecording();
-      } else {
-        void stopRealRecording();
-      }
+      void recording.stopRecording({ mockMode, mode, language });
       return;
     }
 
-    if (!mockMode && !isMicPrimedForSessionRef.current) {
-      void primeMicPermission();
+    if (!mockMode && !recording.isMicPrimed()) {
+      void recording.primeMicPermission();
       return;
     }
 
@@ -588,14 +196,9 @@ export default function App() {
     setLiveStatus('');
     setAppErrorMsg('');
     resetDebugSnapshot();
-    transcriptRef.current = '';
     resetCleanup();
 
-    if (mockMode) {
-      startMockRecording();
-    } else {
-      startRealRecording();
-    }
+    recording.startRecording({ mockMode, language });
   };
 
   // Copy to Clipboard
@@ -618,7 +221,6 @@ export default function App() {
     setLiveStatus('');
     setAppErrorMsg('');
     resetDebugSnapshot();
-    transcriptRef.current = '';
     resetCleanup();
     triggerVibe(30);
   };
@@ -755,7 +357,7 @@ export default function App() {
           </div>
           <div className="flex-1 text-base leading-relaxed text-[var(--color-text)]">
             {finalTranscript || interimTranscript ? (
-              <p>{getVisibleTranscript()}</p>
+              <p>{`${finalTranscript}${interimTranscript}`}</p>
             ) : liveStatus ? (
               <p className="text-[var(--color-text-muted)] italic">{liveStatus}</p>
             ) : (
