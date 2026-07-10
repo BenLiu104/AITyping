@@ -12,6 +12,7 @@
 
 ### Removed
 - `.env.example` 移除 `CF_TUNNEL_TOKEN` 條目（`docker-compose.yml` 無 cloudflared service，無 repo consumer，為 stale 殘留）。
+- 刪除 Vite scaffold 殘留 artifacts（無任何 runtime / test / config 引用）：`frontend/src/App.css`、`frontend/src/assets/react.svg`、`frontend/src/assets/vite.svg`、`frontend/src/live/sensevoice-client.ts`（已被 `sensevoice-ws-client.ts` 取代的舊 REST client）、`frontend/src/test/smoke.test.ts`（純 1+1 placeholder）、`frontend/README.md`（Vite 模板說明）。Test count 48 → 47，其餘閘門不變。
 
 ### Fixed
 - `check.sh` G1.3/G1.4b 閘門邏輯錯誤：原先用 `|| skip` 把 Ruff / pytest 真實失敗隱藏成 SKIP，導致 `bash check.sh all` 在 Ruff 格式不對的情況下仍然 exit 0。修正為先以 `.venv/bin/ruff` 存在與否判斷工具是否可用（SKIP），工具存在但 return non-zero 則記 `nogate`（FAIL）；同樣方式修正 pytest 閘門。同步 `ruff format` 格式化 `backend/app/gemini/adapter.py` 與 `backend/app/tests/test_adapter.py`（僅排版，無行為修改）。
