@@ -1,0 +1,26 @@
+# ── backend/.dockerignore ──────────────────────────────────────────────
+# Keep only what the Dockerfile actually COPYs:
+#   COPY requirements.txt .          (builder)
+#   COPY . /app                      (runner — needs app/)
+# Everything below is local-only and must NOT enter the build context.
+
+# Local virtual environment (pip install runs inside the container)
+.venv/
+
+# Python byte-code / import caches
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Test / lint tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Development-only scripts (not imported by the app)
+scripts/
+
+# Secrets — never in the image
+.env
+*.env

@@ -82,6 +82,14 @@
 ```
 
 ```text
+2026-07-10 PDT — Docker context hygiene (Task 3, chore/docker-context-hygiene)
+- backend/.dockerignore created; build context: ~135MB → ~52KB ✅
+- frontend/.dockerignore created; build context: ~261MB → ~914KB ✅
+- .env.example CF_TUNNEL_TOKEN stale entry removed ✅
+- `bash check.sh phase1`: 7 pass / 0 fail / 1 skip ✅（skip 係 main 尚未併入 Task 2 Ruff gate fix 時的既有行為）
+```
+
+```text
 2026-07-08 11:05 PDT — Gemini Live raw API key fallback removed
 - backend: .venv python -m pytest 22/22 ✅（新增 auth_tokens.create success/failure + route safe-failure regressions）
 - frontend focused: npm run test -- --run src/test/app.test.tsx src/live/live-client.test.ts 43/43 ✅
