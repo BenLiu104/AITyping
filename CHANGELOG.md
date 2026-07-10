@@ -19,6 +19,7 @@
 - PWA / iOS app icon 全套：由單張 1254² 原圖 resize 出 `pwa-64x64` / `pwa-192x192` / `pwa-512x512`（manifest `any`）、`maskable-icon-512x512`（80% safe zone padding）、`apple-touch-icon`（180²，iOS Home Screen，opaque）、`favicon.ico`（16/32/48）/ `favicon.png`（32²）。圖檔米白底（`#FFF9EF`）配合「柔和生活風」UI；`index.html` 加 `apple-touch-icon` link + `theme-color` meta，`<title>` 由 `frontend` 改為 `AITyping`。
 
 ### Security
+- SenseVoice `/ws/transcribe-v2` no longer persists raw PCM-derived WAVs, trace JSONL, or transcript summaries by default. Disk diagnostics are now an explicit operator-only opt-in via `SENSEVOICE_DEBUG_TRACE=1`; the bridge also accepts an injected trace factory for isolated tests.
 - Removed the Gemini Live `/api/live-token` raw `GEMINI_API_KEY` fallback. The endpoint now returns only a short-lived Live ephemeral token created by backend `google-genai` `auth_tokens.create` (`v1alpha`) or fails closed with a safe error.
 - Added positive TTL validation for Gemini Live ephemeral token creation so invalid negative/zero TTLs cannot produce already-expired tokens.
 - Public-repo hygiene：從 tracked tree 移除 origin VPS IP（`<VPS_IP>` 佔位）、絕對 home 路徑（`<INSTALL_DIR>` / `<DEPLOY_USER>`）、及可識別的服務 domain（`<backend-domain>` / `<sensevoice-domain>`）。VPS IP 屬真實洩露（架構本應以 Cloudflare Tunnel 隱藏 origin），domain 則為降低 fork 耦合。註：僅清理當前 tree，git 歷史舊 commit 仍含舊值（未做 history rewrite）。

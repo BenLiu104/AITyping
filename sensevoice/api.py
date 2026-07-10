@@ -47,7 +47,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 TRACE_ROOT = Path("/tmp/sv-debug")
-TRACE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 CORS(app)
@@ -140,8 +139,29 @@ def normalize_streaming_transcript(text: str) -> str:
     return cleaned
 
 
+class NoOpWsTraceSession:
+    def update_language(self, language: str) -> None:
+        pass
+
+    def on_control(self, message: str) -> None:
+        pass
+
+    def on_chunk(self, raw_bytes: bytes) -> None:
+        pass
+
+    def on_event(self, event_name: str, text: str, is_final: bool) -> None:
+        pass
+
+    def on_end_ack(self) -> None:
+        pass
+
+    def finish(self, reason: str) -> None:
+        pass
+
+
 class WsTraceSession:
     def __init__(self, language: str = "yue"):
+        TRACE_ROOT.mkdir(parents=True, exist_ok=True)
         self.trace_id = time.strftime("%Y%m%d-%H%M%S") + f"-{uuid.uuid4().hex[:8]}"
         self.language = language
         self.started_at = time.time()
@@ -243,13 +263,20 @@ class WsTraceSession:
         logger.info("WS trace saved: %s", self.summary_path)
 
 
+def create_ws_trace_session(language: str):
+    if os.environ.get("SENSEVOICE_DEBUG_TRACE") == "1":
+        return WsTraceSession(language=language)
+    return NoOpWsTraceSession()
+
+
 class StreamingTranscriptionBridge:
-    def __init__(self, sender, processor_factory=None):
+    def __init__(self, sender, processor_factory=None, trace_factory=None):
         self.sender = sender
         self.language = "yue"
         self.processor_factory = processor_factory or self._default_processor_factory
         self.processor = None
-        self.trace = WsTraceSession(language=self.language)
+        trace_factory = trace_factory or create_ws_trace_session
+        self.trace = trace_factory(self.language)
 
     def handle_text_message(self, message: str) -> None:
         self.trace.on_control(message)

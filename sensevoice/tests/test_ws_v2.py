@@ -1,5 +1,9 @@
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+
 import numpy as np
 
 import api
@@ -18,6 +22,29 @@ class FakeProcessor:
         self.finalized = True
         self.on_event('StreamingASREventType.PARTIAL_RESULT', '呢几个字')
         self.on_event('StreamingASREventType.FINAL_RESULT', '呢几个字都表达唔到，我想讲嘅意思。')
+
+
+class FakeTrace:
+    def __init__(self, language):
+        self.calls = [('start', language)]
+
+    def update_language(self, language):
+        self.calls.append(('language', language))
+
+    def on_control(self, message):
+        self.calls.append(('control', message))
+
+    def on_chunk(self, raw_bytes):
+        self.calls.append(('chunk', raw_bytes))
+
+    def on_event(self, event_name, text, is_final):
+        self.calls.append(('event', event_name, text, is_final))
+
+    def on_end_ack(self):
+        self.calls.append(('end_ack',))
+
+    def finish(self, reason):
+        self.calls.append(('finish', reason))
 
 
 class StreamingTranscriptionBridgeTests(unittest.TestCase):
@@ -58,6 +85,56 @@ class StreamingTranscriptionBridgeTests(unittest.TestCase):
         self.assertEqual(sent_messages[0], {'transcript': '呢幾個字', 'is_final': False})
         self.assertEqual(sent_messages[1], {'transcript': '呢幾個字都表達唔到，我想講嘅意思。', 'is_final': True})
         self.assertEqual(sent_messages[2], {'transcript': '', 'is_final': True, 'end_ack': True})
+
+    def test_default_bridge_trace_is_noop_and_never_creates_trace_directory(self):
+        with TemporaryDirectory() as temporary_directory:
+            trace_root = Path(temporary_directory) / 'sv-debug'
+            with patch.object(api, 'TRACE_ROOT', trace_root):
+                bridge = api.StreamingTranscriptionBridge(
+                    sender=lambda payload: None,
+                    processor_factory=lambda language, on_event: FakeProcessor(on_event),
+                )
+                bridge.handle_binary_message(np.array([1, -1], dtype=np.int16).tobytes())
+                bridge.handle_text_message('END')
+                bridge.finish('test_complete')
+
+            self.assertFalse(trace_root.exists())
+            self.assertFalse(hasattr(bridge.trace, 'raw_audio'))
+
+    def test_bridge_forwards_trace_lifecycle_to_injected_trace_factory(self):
+        traces = []
+
+        def trace_factory(language):
+            trace = FakeTrace(language)
+            traces.append(trace)
+            return trace
+
+        bridge = api.StreamingTranscriptionBridge(
+            sender=lambda payload: None,
+            processor_factory=lambda language, on_event: FakeProcessor(on_event),
+            trace_factory=trace_factory,
+        )
+        raw_bytes = np.array([1, -1], dtype=np.int16).tobytes()
+        bridge.handle_text_message('LANG:mixed')
+        bridge.handle_binary_message(raw_bytes)
+        bridge.handle_text_message('END')
+        bridge.finish('test_complete')
+
+        self.assertEqual(len(traces), 1)
+        self.assertEqual(
+            traces[0].calls,
+            [
+                ('start', 'yue'),
+                ('control', 'LANG:mixed'),
+                ('language', 'mixed'),
+                ('chunk', raw_bytes),
+                ('control', 'END'),
+                ('event', 'StreamingASREventType.PARTIAL_RESULT', '呢幾個字', False),
+                ('event', 'StreamingASREventType.FINAL_RESULT', '呢幾個字都表達唔到，我想講嘅意思。', True),
+                ('end_ack',),
+                ('finish', 'test_complete'),
+            ],
+        )
 
 
 if __name__ == '__main__':

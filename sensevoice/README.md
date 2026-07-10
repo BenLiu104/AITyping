@@ -15,6 +15,7 @@
    - [健康檢查](#31-健康檢查)
    - [語音轉文字](#32-語音轉文字)
    - [批量轉錄](#33-批量轉錄)
+   - [WebSocket v2 私隱與診斷](#34-websocket-v2-私隱與診斷)
 4. [PWA 整合範例](#4-pwa-整合範例)
 5. [管理與維護](#5-管理與維護)
    - [服務管理](#51-服務管理)
@@ -186,6 +187,12 @@ Response:
   "count": 2
 }
 ```
+
+### 3.4 WebSocket v2 私隱與診斷
+
+`/ws/transcribe-v2` 正常運作時只處理完成聽寫所需的 PCM；**預設不保留 raw audio，亦不會把 WAV、JSONL trace 或 transcript summary 寫入 disk**。WebSocket payload 與 `partial_result` / `final_result` / `end_ack` protocol 不受此設定影響。
+
+如需針對問題做短暫診斷，只有 operator 可在啟動 process 前明確設定 `SENSEVOICE_DEBUG_TRACE=1`。此 opt-in 才會啟用既有 `/tmp/sv-debug` disk trace；它不是 client API，使用者無法透過 WebSocket 要求開啟。診斷結束後應移除該設定，恢復預設的 no-op trace。
 
 ---
 
