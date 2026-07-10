@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -67,7 +68,11 @@ class StreamingTranscriptionBridgeTests(unittest.TestCase):
             created_processors.append(processor)
             return processor
 
-        bridge = api.StreamingTranscriptionBridge(sender=sender, processor_factory=processor_factory)
+        bridge = api.StreamingTranscriptionBridge(
+            sender=sender,
+            processor_factory=processor_factory,
+            trace_factory=lambda language: api.NoOpWsTraceSession(),
+        )
         bridge.handle_text_message('LANG:mixed')
         bridge.handle_binary_message(np.array([0, 32767, -32768], dtype=np.int16).tobytes())
         bridge.handle_text_message('END')
@@ -89,16 +94,22 @@ class StreamingTranscriptionBridgeTests(unittest.TestCase):
     def test_default_bridge_trace_is_noop_and_never_creates_trace_directory(self):
         with TemporaryDirectory() as temporary_directory:
             trace_root = Path(temporary_directory) / 'sv-debug'
-            with patch.object(api, 'TRACE_ROOT', trace_root):
-                bridge = api.StreamingTranscriptionBridge(
-                    sender=lambda payload: None,
-                    processor_factory=lambda language, on_event: FakeProcessor(on_event),
-                )
-                bridge.handle_binary_message(np.array([1, -1], dtype=np.int16).tobytes())
-                bridge.handle_text_message('END')
-                bridge.finish('test_complete')
+            with patch.dict(os.environ, {'SENSEVOICE_DEBUG_TRACE': '1'}):
+                with patch.dict(os.environ, {}, clear=True), patch.object(api, 'TRACE_ROOT', trace_root), patch.object(
+                    api,
+                    'WsTraceSession',
+                    side_effect=AssertionError('default/no-op test must not construct disk trace sessions'),
+                ):
+                    bridge = api.StreamingTranscriptionBridge(
+                        sender=lambda payload: None,
+                        processor_factory=lambda language, on_event: FakeProcessor(on_event),
+                    )
+                    bridge.handle_binary_message(np.array([1, -1], dtype=np.int16).tobytes())
+                    bridge.handle_text_message('END')
+                    bridge.finish('test_complete')
 
             self.assertFalse(trace_root.exists())
+            self.assertIsInstance(bridge.trace, api.NoOpWsTraceSession)
             self.assertFalse(hasattr(bridge.trace, 'raw_audio'))
 
     def test_bridge_forwards_trace_lifecycle_to_injected_trace_factory(self):
