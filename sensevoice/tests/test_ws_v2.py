@@ -112,6 +112,24 @@ class StreamingTranscriptionBridgeTests(unittest.TestCase):
             self.assertIsInstance(bridge.trace, api.NoOpWsTraceSession)
             self.assertFalse(hasattr(bridge.trace, 'raw_audio'))
 
+    def test_trace_opt_in_uses_disk_trace_session_lazily_without_artifacts(self):
+        with TemporaryDirectory() as temporary_directory:
+            trace_root = Path(temporary_directory) / 'sv-debug'
+            with patch.dict(os.environ, {'SENSEVOICE_DEBUG_TRACE': '1'}, clear=False), patch.object(
+                api, 'TRACE_ROOT', trace_root
+            ), patch.object(api.WsTraceSession, 'log') as log:
+                self.assertFalse(trace_root.exists())
+
+                bridge = api.StreamingTranscriptionBridge(
+                    sender=lambda payload: None,
+                    processor_factory=lambda language, on_event: FakeProcessor(on_event),
+                )
+
+                self.assertIsInstance(bridge.trace, api.WsTraceSession)
+                self.assertTrue(trace_root.is_dir())
+                self.assertEqual(list(trace_root.iterdir()), [])
+                log.assert_called_once_with('session_start', language='yue')
+
     def test_bridge_forwards_trace_lifecycle_to_injected_trace_factory(self):
         traces = []
 
