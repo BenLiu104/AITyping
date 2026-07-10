@@ -1,0 +1,21 @@
+# ── frontend/.dockerignore ─────────────────────────────────────────────
+# Keep only what the Dockerfile actually COPYs:
+#   COPY package*.json ./            (builder — cache layer)
+#   COPY . .                         (builder — needs src/, public/,
+#                                     index.html, vite.config*, tsconfig*)
+#   COPY nginx.conf …                (runner)
+# Everything below is local-only and must NOT enter the build context.
+
+# Installed dependencies (npm ci runs inside the container)
+node_modules/
+
+# Previous local build output (container builds its own dist/)
+dist/
+
+# Editor / OS noise
+.DS_Store
+*.local
+
+# Secrets — never in the image
+.env
+*.env

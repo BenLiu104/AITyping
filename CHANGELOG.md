@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Changed
+- `backend/.dockerignore` 新增：排除 `.venv/`、`__pycache__/`、`.pytest_cache/`、`.ruff_cache/`、`scripts/`、`.env`；backend build context 由 ~135MB 縮至 ~52KB。
+- `frontend/.dockerignore` 新增：排除 `node_modules/`、`dist/`、`.env`、`.DS_Store`；frontend build context 由 ~261MB 縮至 ~914KB。
+
+### Removed
+- `.env.example` 移除 `CF_TUNNEL_TOKEN` 條目（`docker-compose.yml` 無 cloudflared service，無 repo consumer，為 stale 殘留）。
+
 ### Fixed
 - Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
 
