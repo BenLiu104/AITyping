@@ -125,7 +125,7 @@ class StreamingTranscriptionBridgeTests(unittest.TestCase):
                     processor_factory=lambda language, on_event: FakeProcessor(on_event),
                 )
 
-                self.assertIsInstance(bridge.trace, api.WsTraceSession)
+                self.assertIs(type(bridge.trace), api.WsTraceSession)
                 self.assertTrue(trace_root.is_dir())
                 self.assertEqual(list(trace_root.iterdir()), [])
                 log.assert_called_once_with('session_start', language='yue')
