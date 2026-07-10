@@ -1,0 +1,45 @@
+# Docker ignore for sensevoice/ build context
+# Keep: source, requirements, checksum, tests
+# Exclude: venv, caches, generated files, local traces
+
+# Python venv
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Test + coverage artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# Local trace / debug output (SENSEVOICE_DEBUG_TRACE=1)
+/tmp/
+sv-debug/
+
+# OS / editor noise
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# The Dockerfile itself isn't needed inside the build context at runtime
+# (it's used by the builder, not COPY-ed in), but we do NOT exclude it here
+# because Docker removes it from the context automatically; explicit exclusion
+# is harmless but unnecessary.
+
+# Do NOT exclude: api.py, fetch_models.py, models.sha256, requirements.txt,
+# tests/, Dockerfile, README.md, DEPLOY.md

@@ -125,6 +125,41 @@ PYTHONPATH=. ./venv/bin/python -m unittest tests.test_ws_v2 -v
 
 > 測試用 `FakeProcessor` mock 咗 ASR runtime，唔需要真模型，可快速跑（~0.04s）。
 
+## 7. 容器化部署（實驗性 / HF Spaces 準備中）
+
+> ⚠️ **現行 canonical production 路徑：host systemd `sensevoice-api.service`（port 8082）+ Cloudflare Tunnel。**
+> 容器路徑為實驗性 POC，**尚未上線**，不改動任何現行服務。
+
+### 現況
+
+| 路徑 | 狀態 |
+|---|---|
+| host systemd + CF Tunnel | ✅ Canonical production（本文件前面各節） |
+| 本地容器 POC | ✅ ARM64 build + handshake 已驗證（feat/sensevoice-container-poc） |
+| x86 / HF Docker Spaces | ⏳ Pending — 未驗證 |
+| Backend short-lived WS token | ⏳ Pending — 未實作 |
+
+### 本地 POC 快速運行
+
+```bash
+# repo 根目錄
+docker compose --profile sensevoice-local build sensevoice
+docker compose --profile sensevoice-local up -d sensevoice
+curl http://localhost:7860/ping
+docker compose --profile sensevoice-local down
+```
+
+- `docker compose up`（無 profile）**不會**起此容器。
+- 映像在 build 時把 streaming ONNX + FunASR .pt 模型全數 bake in，無需 volume mount。
+  若掛載 `~/.cache/huggingface` runtime mount，**會靜默遮蓋** bake 入的模型副本；
+  POC 不需要此 mount。
+
+### 遷移決策（尚未確認）
+
+容器化最終路徑預計為 Hugging Face CPU Docker Space，對外提供 public endpoint，
+backend 簽發 short-lived WS token 做存取控制。此決策**尚未批准 / 尚未實作**，
+不在本 POC 範圍內。
+
 ## 6. 已知坑（redeploy 必讀）
 
 **venv 不可搬移。** venv `bin/` 內嘅 script（`pip`、`ruff` 等）shebang 寫死絕對路徑

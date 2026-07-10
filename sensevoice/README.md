@@ -187,4 +187,27 @@ PYTHONPATH=. ./venv/bin/python -m unittest tests.test_ws_v2 -v
 
 ---
 
+## 本地容器 POC（實驗性）
+
+> ⚠️ **現行 production 路徑仍是 host systemd `sensevoice-api.service`（port 8082）。**
+> 容器 POC 係獨立實驗，不改動 / 不取代 systemd 服務。
+
+```bash
+# 在 repo 根目錄執行（build context = ./sensevoice）
+docker compose --profile sensevoice-local build sensevoice
+docker compose --profile sensevoice-local up -d sensevoice
+
+# 健康檢查
+curl http://localhost:7860/ping   # {"status":"ok","model_loaded":true}
+
+# 停止並清理
+docker compose --profile sensevoice-local down
+```
+
+- `docker compose up`（無 profile）**不會**啟動容器 POC，現有服務不受影響。
+- 目前只驗證 ARM64 本地 build；x86 / HF Spaces 驗證 pending。
+- 詳見 `sensevoice/Dockerfile` + `docker-compose.yml` `sensevoice-local` profile。
+
+---
+
 *最後更新：2026-07-10*

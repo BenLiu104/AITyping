@@ -25,3 +25,24 @@ services:
       - "8080:80" # VPS 內部映射，由 Cloudflare Tunnel 代理或內部直接訪問
     depends_on:
       - backend
+
+  # ── SenseVoice local container POC ──────────────────────────────────────────
+  # Opt-in only: docker compose --profile sensevoice-local up sensevoice
+  # Default `docker compose up` does NOT start this service.
+  # The host systemd sensevoice-api.service (port 8082) remains the canonical
+  # production boundary and is NOT affected by this service.
+  #
+  # x86 / HF Spaces validation is pending; local ARM64 build only.
+  sensevoice:
+    profiles:
+      - sensevoice-local
+    build:
+      context: ./sensevoice
+      dockerfile: Dockerfile
+    container_name: aityping-sensevoice-poc
+    ports:
+      - "7860:7860"
+    environment:
+      - PYTHONUNBUFFERED=1
+    # No restart policy — POC only, not production.
+    # No depends_on — SenseVoice is independent of backend/frontend.
