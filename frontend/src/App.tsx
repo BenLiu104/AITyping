@@ -4,6 +4,7 @@ import { Mode, Language } from './types';
 import { resampleTo16k, floatTo16BitPCM } from './audio/converter';
 import { LiveClient, type SpeechProfile } from './live/live-client';
 import { SenseVoiceWsClient } from './live/sensevoice-ws-client';
+import { useCleanup } from './features/cleanup/use-cleanup';
 
 const BUILD_LABEL = 'v01:35';
 
@@ -54,6 +55,34 @@ const formatTimer = (totalSeconds: number): string => {
   return `${m}:${s}`;
 };
 
+// Pure helper — lives at module scope so it can be referenced before the hook call.
+const simulateMockCleanup = (raw: string, currentMode: Mode, currentLang: Language): string => {
+  let prefix = '【修剪乾淨】';
+  if (currentLang === 'yue') prefix = '【廣東話書面】';
+  if (currentMode === 'todo') prefix = '【待辦事項】';
+  if (currentMode === 'email') prefix = '【電郵格式】';
+  if (currentMode === 'prompt') prefix = '【AI Prompt】';
+
+  console.log('Simulating mock cleanup under prefix:', prefix);
+
+  // Simple replacement to simulate cleanup rules
+  const cleaned = raw
+    .replace(/by the way/gi, '順帶一提')
+    .replace(/let me check my calendar/gi, '讓我確認一下我的行事曆')
+    .replace(/唔好意思遲咗覆你。/g, '抱歉晚了回覆你。')
+    .trim();
+
+  if (currentMode === 'todo') {
+    return `1. 確認明天會議時間\n2. 檢視行事曆日程\n3. 回覆對方郵件`;
+  }
+
+  if (currentMode === 'email') {
+    return `您好：\n\n今天的天氣非常好。順帶一提，請問我們明天幾點見面？我需要確認一下我的行事曆。\n\n抱歉晚了回覆您。\n\n祝好`;
+  }
+
+  return `${cleaned}`;
+};
+
 type LiveDebugSnapshot = {
   wsOpen: boolean;
   setupComplete: boolean;
@@ -93,15 +122,25 @@ export default function App() {
   const [finalTranscript, setFinalTranscript] = useState<string>('');
   const [liveStatus, setLiveStatus] = useState<string>('');
   const [liveDebug, setLiveDebug] = useState<LiveDebugSnapshot>(() => createDebugSnapshot());
-  const [cleanedText, setCleanedText] = useState<string>('');
-  const [cleanupSourceTranscript, setCleanupSourceTranscript] = useState<string>('');
-  const [lastCleanedMode, setLastCleanedMode] = useState<Mode | null>(null);
-  const [lastCleanedLanguage, setLastCleanedLanguage] = useState<Language | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Cleanup state — owned by useCleanup hook.
+  // simulateMockCleanup is passed as mockCleanup only when mockMode is active.
+  const {
+    cleanedText,
+    isLoading,
+    errorMsg,
+    runCleanup: hookRunCleanup,
+    rerunCleanup,
+    setCleanedText,
+    clearError,
+    resetCleanup,
+  } = useCleanup({ mockCleanup: mockMode ? simulateMockCleanup : undefined });
 
   // UI States
   const [copied, setCopied] = useState<boolean>(false);
+  // App-owned error slot for NON-cleanup failures (mic permission, Live errors,
+  // pipeline init, clipboard). Cleanup errors live in the useCleanup hook.
+  const [appErrorMsg, setAppErrorMsg] = useState<string>('');
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [vibrationEnabled, setVibrationEnabled] = useState<boolean>(true);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
@@ -113,14 +152,13 @@ export default function App() {
   const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const liveClientRef = useRef<LiveClient | SenseVoiceWsClient | null>(null);
   const transcriptRef = useRef<string>('');
-  const cleanupRunIdRef = useRef<number>(0);
   const isPrimingMicPermissionRef = useRef<boolean>(false);
   const isMicPrimedForSessionRef = useRef<boolean>(false);
   const isCaptureActiveRef = useRef<boolean>(false);
   const liveDebugRef = useRef<LiveDebugSnapshot>(createDebugSnapshot());
 
   // Mock Mode generator timeout ref
-  const mockIntervalRef = useRef<any>(null);
+  const mockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto copy effect
   useEffect(() => {
@@ -224,7 +262,7 @@ export default function App() {
     if (isPrimingMicPermissionRef.current) return;
 
     isPrimingMicPermissionRef.current = true;
-    setErrorMsg('');
+    setAppErrorMsg('');
     setLiveStatus('正在請求麥克風授權...');
 
     try {
@@ -233,9 +271,9 @@ export default function App() {
       isMicPrimedForSessionRef.current = true;
       setLiveStatus('麥克風已授權，請重新點一下開始錄音');
       triggerVibe(30);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLiveStatus('');
-      setErrorMsg(err.message || '麥克風授權失敗，請允許 Safari 使用麥克風');
+      setAppErrorMsg(err instanceof Error ? err.message : '麥克風授權失敗，請允許 Safari 使用麥克風');
     } finally {
       isPrimingMicPermissionRef.current = false;
       setIsRecording(false);
@@ -244,10 +282,11 @@ export default function App() {
 
   // Mock Mode Simulator for Speech-to-Text
   const startMockRecording = () => {
-    setErrorMsg('');
+    clearError();
+    setAppErrorMsg('');
     setInterimTranscript('正在聽寫...');
     setFinalTranscript('');
-    
+
     const mockPhrases = [
       '今日天氣真係幾好啊 ',
       'by the way ',
@@ -256,7 +295,7 @@ export default function App() {
       '唔好意思遲咗覆你。'
     ];
     let currentIdx = 0;
-    
+
     mockIntervalRef.current = setInterval(() => {
       if (currentIdx < mockPhrases.length) {
         const nextPhrase = mockPhrases[currentIdx];
@@ -275,120 +314,26 @@ export default function App() {
       clearInterval(mockIntervalRef.current);
     }
     setInterimTranscript('');
-    
+
     // Call Mock Cleanup or Real VPS /api/cleanup
-    setIsLoading(true);
     triggerVibe(50);
-    let runId = cleanupRunIdRef.current;
 
-    try {
-      const textToClean = finalTranscript || '今日天氣真係幾好啊 by the way 聽日我哋幾點見面？ let me check my calendar 唔好意思遲咗覆你。';
-      const targetMode = mode;
-      const targetLanguage = language;
-      runId = ++cleanupRunIdRef.current;
-      setCleanupSourceTranscript(textToClean);
-      
-      let cleanedResult = '';
-      if (!mockMode) {
-        cleanedResult = await runCleanup(textToClean, targetMode, targetLanguage);
-      } else {
-        // Simulation Delay
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        cleanedResult = simulateMockCleanup(textToClean, targetMode, targetLanguage);
-      }
+    const textToClean = finalTranscript || '今日天氣真係幾好啊 by the way 聽日我哋幾點見面？ let me check my calendar 唔好意思遲咗覆你。';
+    const targetMode = mode;
+    const targetLanguage = language;
 
-      if (runId !== cleanupRunIdRef.current) return;
-      setCleanedText(cleanedResult);
-      setLastCleanedMode(targetMode);
-      setLastCleanedLanguage(targetLanguage);
-    } catch (err: any) {
-      if (runId !== cleanupRunIdRef.current) return;
-      setErrorMsg(err.message || '整理失敗，請再試一次');
-    } finally {
-      if (cleanupRunIdRef.current === runId) {
-        setIsLoading(false);
-      }
-      triggerVibe(40);
-    }
+    await hookRunCleanup(textToClean, targetMode, targetLanguage);
+    triggerVibe(40);
   };
-
-  const simulateMockCleanup = (raw: string, currentMode: Mode, currentLang: Language): string => {
-    let prefix = '【修剪乾淨】';
-    if (currentLang === 'yue') prefix = '【廣東話書面】';
-    if (currentMode === 'todo') prefix = '【待辦事項】';
-    if (currentMode === 'email') prefix = '【電郵格式】';
-    if (currentMode === 'prompt') prefix = '【AI Prompt】';
-
-    console.log('Simulating mock cleanup under prefix:', prefix);
-
-    // Simple replacement to simulate cleanup rules
-    let cleaned = raw
-      .replace(/by the way/gi, '順帶一提')
-      .replace(/let me check my calendar/gi, '讓我確認一下我的行事曆')
-      .replace(/唔好意思遲咗覆你。/g, '抱歉晚了回覆你。')
-      .trim();
-
-    if (currentMode === 'todo') {
-      return `1. 確認明天會議時間\n2. 檢視行事曆日程\n3. 回覆對方郵件`;
-    }
-    
-    if (currentMode === 'email') {
-      return `您好：\n\n今天的天氣非常好。順帶一提，請問我們明天幾點見面？我需要確認一下我的行事曆。\n\n抱歉晚了回覆您。\n\n祝好`;
-    }
-
-    return `${cleaned}`;
-  };
-
-  const callCleanupAPI = async (
-    text: string,
-    targetMode: Exclude<Mode, 'semantic'>,
-    targetLanguage: Language,
-  ): Promise<string> => {
-    const res = await fetch(`${API_BASE}/api/cleanup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rawTranscript: text,
-        mode: targetMode,
-        language: targetLanguage,
-        style: 'natural'
-      })
-    });
-    if (!res.ok) throw new Error('Cleanup API 呼叫失敗');
-    const data = await res.json();
-    return data.cleaned;
-  };
-
-  const callSmartCleanupAPI = async (text: string, targetLanguage: Language): Promise<string> => {
-    const res = await fetch(`${API_BASE}/api/smart-cleanup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        transcript: text,
-        languageMode: targetLanguage,
-      })
-    });
-    if (!res.ok) throw new Error('Smart Cleanup API 呼叫失敗');
-    const data = await res.json();
-    return data.clean_text;
-  };
-
-  const runCleanup = (text: string, targetMode: Mode, targetLanguage: Language): Promise<string> =>
-    targetMode === 'semantic'
-      ? callSmartCleanupAPI(text, targetLanguage)
-      : callCleanupAPI(text, targetMode, targetLanguage);
 
   // Real Audio Pipeline Setup (iOS Safari Compliant)
   const startRealRecording = async () => {
-    setErrorMsg('');
+    clearError();
+    setAppErrorMsg('');
     setLiveStatus('正在連線 Live API...');
     resetDebugSnapshot();
     setInterimTranscript('');
     setFinalTranscript('');
-    setCleanupSourceTranscript('');
-    setLastCleanedMode(null);
-    setLastCleanedLanguage(null);
-    cleanupRunIdRef.current++;
     transcriptRef.current = '';
 
     try {
@@ -448,7 +393,7 @@ export default function App() {
             if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
               return;
             }
-            setErrorMsg(err);
+            setAppErrorMsg(err);
             cleanupAudioPipeline();
             setIsRecording(false);
           },
@@ -516,7 +461,7 @@ export default function App() {
             if (transcriptRef.current.trim() || liveDebugRef.current.transcriptEvents > 0) {
               return;
             }
-            setErrorMsg(err);
+            setAppErrorMsg(err);
             cleanupAudioPipeline();
             setIsRecording(false);
           },
@@ -555,9 +500,10 @@ export default function App() {
       source.connect(workletNode);
       workletNode.connect(audioContext.destination); // Required on some Safari versions to keep active
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setErrorMsg(err.message || '麥克風或 WebSocket 管道初始化失敗');
+      const message = err instanceof Error ? err.message : '麥克風或 WebSocket 管道初始化失敗';
+      setAppErrorMsg(message);
       cleanupAudioPipeline();
       setIsRecording(false);
     }
@@ -606,36 +552,16 @@ export default function App() {
     // ── Common: send to Gemini cleanup API ──
     if (!finalText.trim()) {
       await postDebugEvent('no-transcript');
-      setIsLoading(false);
       setLiveStatus('未收到聽寫文字，請再試一次或講近一點');
       return;
     }
 
     await postDebugEvent('transcript-ready');
     setLiveStatus('');
-    setIsLoading(true);
     triggerVibe(50);
-    let runId = cleanupRunIdRef.current;
 
-    try {
-      const targetMode = mode;
-      const targetLanguage = language;
-      runId = ++cleanupRunIdRef.current;
-      setCleanupSourceTranscript(finalText);
-      const cleanedResult = await runCleanup(finalText, targetMode, targetLanguage);
-      if (runId !== cleanupRunIdRef.current) return;
-      setCleanedText(cleanedResult);
-      setLastCleanedMode(targetMode);
-      setLastCleanedLanguage(targetLanguage);
-    } catch (err: any) {
-      if (runId !== cleanupRunIdRef.current) return;
-      setErrorMsg(err.message || '整理失敗，請再試一次');
-    } finally {
-      if (cleanupRunIdRef.current === runId) {
-        setIsLoading(false);
-      }
-      triggerVibe(40);
-    }
+    await hookRunCleanup(finalText, mode, language);
+    triggerVibe(40);
   };
 
   const handleMicPress = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -657,18 +583,14 @@ export default function App() {
     }
 
     setIsRecording(true);
-    setCleanedText('');
     setFinalTranscript('');
     setInterimTranscript('');
-    setCleanupSourceTranscript('');
-    setLastCleanedMode(null);
-    setLastCleanedLanguage(null);
-    setIsLoading(false);
-    cleanupRunIdRef.current++;
     setLiveStatus('');
+    setAppErrorMsg('');
     resetDebugSnapshot();
     transcriptRef.current = '';
-    
+    resetCleanup();
+
     if (mockMode) {
       startMockRecording();
     } else {
@@ -685,7 +607,7 @@ export default function App() {
       triggerVibe(40);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setErrorMsg('複製至剪貼簿失敗');
+      setAppErrorMsg('複製至剪貼簿失敗');
     }
   };
 
@@ -693,49 +615,17 @@ export default function App() {
   const handleReset = () => {
     setFinalTranscript('');
     setInterimTranscript('');
-    setCleanedText('');
-    setCleanupSourceTranscript('');
-    setLastCleanedMode(null);
-    setLastCleanedLanguage(null);
-    setIsLoading(false);
-    cleanupRunIdRef.current++;
-    setErrorMsg('');
     setLiveStatus('');
+    setAppErrorMsg('');
     resetDebugSnapshot();
     transcriptRef.current = '';
+    resetCleanup();
     triggerVibe(30);
   };
 
   const handleModeChange = async (nextMode: Mode) => {
     setMode(nextMode);
-
-    if (isRecording) return;
-    if (!cleanupSourceTranscript.trim()) return;
-    if (cleanedText && nextMode === lastCleanedMode && language === lastCleanedLanguage) return;
-
-    const targetLanguage = language;
-    const sourceTranscript = cleanupSourceTranscript;
-    const runId = ++cleanupRunIdRef.current;
-    setIsLoading(true);
-    setErrorMsg('');
-
-    try {
-      const cleanedResult = mockMode
-        ? simulateMockCleanup(sourceTranscript, nextMode, targetLanguage)
-        : await runCleanup(sourceTranscript, nextMode, targetLanguage);
-
-      if (runId !== cleanupRunIdRef.current) return;
-      setCleanedText(cleanedResult);
-      setLastCleanedMode(nextMode);
-      setLastCleanedLanguage(targetLanguage);
-    } catch (err: any) {
-      if (runId !== cleanupRunIdRef.current) return;
-      setErrorMsg(err.message || '整理失敗，請再試一次');
-    } finally {
-      if (runId === cleanupRunIdRef.current) {
-        setIsLoading(false);
-      }
-    }
+    await rerunCleanup(nextMode, language, isRecording);
   };
 
   return (
@@ -918,10 +808,10 @@ export default function App() {
               </div>
             )}
 
-            {errorMsg && (
+            {(errorMsg || appErrorMsg) && (
               <div className="mb-2 bg-red-50 border border-red-200 text-red-600 p-2.5 rounded-xl text-xs flex items-center justify-between">
-                <span>{errorMsg}</span>
-                <button onClick={() => setErrorMsg('')} className="text-red-500 font-bold px-1.5">✕</button>
+                <span>{errorMsg || appErrorMsg}</span>
+                <button onClick={() => { clearError(); setAppErrorMsg(''); }} className="text-red-500 font-bold px-1.5">✕</button>
               </div>
             )}
 

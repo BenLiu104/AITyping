@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **refactor(frontend): extract cleanup boundary** — `callCleanupAPI`、`callSmartCleanupAPI`、`runCleanup` 內聯函數從 `App.tsx` 抽出，建立 `frontend/src/features/cleanup/cleanup-api.ts`（typed HTTP 邊界，帶 `AbortSignal`）和 `frontend/src/features/cleanup/use-cleanup.ts`（cleanup 生命週期 hook）。App.tsx 只作頁面協調器；cleanup HTTP I/O、stale-response 保護（runId 哨兵）、mode re-run 邏輯全部集中在 feature 層。新增 AbortController 政策：較新的 cleanup 開始、`resetCleanup`、以及元件 unmount 都會取消前一個 in-flight 請求，且取消後不再寫入 result / error / loading（避免競態殘留）。`rerunCleanup` 改為只依賴注入的 `mockCleanup`（移除外洩的 `mockMode` 參數）。cleanup feature 22 focused hook/api 單元測試（含 abort-on-new-run/reset/unmount 與 mock guard 等價性），app 整合測試全部保留（全套 70/70）。
+
 ### Fixed
 - Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
 

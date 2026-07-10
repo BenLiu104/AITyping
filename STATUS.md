@@ -6,7 +6,7 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版 + cleanup mode re-run UX 已完成並 merge 入 `main`；UI 改版 Ben 已確認「效果都 ok」
-- **Branch**: `main`（`uixi` 已 merge）
+- **Branch**: `refactor/cleanup-boundary`（Task 6 已完成，待 Ben review / merge）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
@@ -53,6 +53,17 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-10 09:08 PDT — Task 6: extract cleanup boundary (refactor/cleanup-boundary) — 修復後
+- 新增 frontend/src/features/cleanup/cleanup-api.ts（typed fetch boundary，帶 AbortSignal）
+- 新增 frontend/src/features/cleanup/use-cleanup.ts（cleanup hook，AbortController 生命週期）
+- 新增 frontend/src/features/cleanup/use-cleanup.test.ts（22 focused tests，含 abort-on-new-run/reset/unmount + mock guard equivalence）
+- App.tsx 只作協調器；callCleanupAPI / callSmartCleanupAPI / runCleanup 內聯函數全部移入 hook/api 層
+- 修復 code review IMPORTANT：(1) 加入 AbortController policy（新 run/reset/unmount 取消前一個請求，取消後不再寫 state）；(2) rerunCleanup 移除 mockMode 參數，只用注入的 mockCleanup；(3) 還原 mic/Live/pipeline/copy 錯誤路由回 App 自有 errorMsg 紅框（不再誤送 liveStatus）
+- typecheck ✅ / oxlint 0 warn ✅ / vitest 70/70（cleanup 檔 22/22）✅ / build ✅（PWA precache 13 entries）
+- git diff --check ✅；未做 iPhone 真機驗收
+```
 
 ```text
 2026-07-08 15:00 PDT — Gemini Live 1011 regression 修好（constrained endpoint setup 鎖入 token）
