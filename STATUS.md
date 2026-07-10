@@ -55,6 +55,15 @@
 ## 4. Current Verification Snapshot
 
 ```text
+2026-07-10 08:12 PDT — Task 2: check.sh G1.3/G1.4b gate truthfulness fix
+- RED proof（修正前）：ruff format --check exit 1，但舊腳本仍 exit 0（gate 計 SKIP）
+- check.sh 修正：`.venv/bin/ruff` 存在與否決定 SKIP，存在但 exit non-zero → nogate(FAIL)；同樣修正 pytest 閘門
+- GREEN：backend ruff format 2 files reformatted（adapter.py / test_adapter.py）；backend ruff check / format check、pytest 32/32 ✅；`bash check.sh phase1` 8 pass / 0 fail / 0 skip ✅
+- 反向 proof：暫時加入 formatter-only probe 後，`bash check.sh phase1` 在 G1.3 正確 FAIL 並 exit 1；probe 已還原，無殘留修改
+- `bash check.sh all` 只因 feature branch / dirty working tree 的 G0.2b/G0.2c 而 exit 1；`git diff --check` ✅。
+```
+
+```text
 2026-07-10 02:48 PDT — SenseVoice v2 default raw-audio trace disabled（local only，未部署）
 - RED: venv/bin/python -m unittest tests.test_ws_v2.StreamingTranscriptionBridgeTests.test_default_bridge_trace_is_noop_and_never_creates_trace_directory tests.test_ws_v2.StreamingTranscriptionBridgeTests.test_bridge_forwards_trace_lifecycle_to_injected_trace_factory -v → 預設 trace 嘗試寫 JSONL，且 bridge 未接受 trace_factory（預期失敗）
 - GREEN: 同一聚焦 command 2/2 ✅；預設 bridge 不建立測試 trace 目錄、不持有 raw_audio，injected fake trace 收到完整 lifecycle。

@@ -77,8 +77,18 @@ check_phase1() {
   fi
 
   if [ -d backend ]; then
-    (cd backend && source .venv/bin/activate && ruff check . && ruff format . --check) && gate "G1.3 ruff passes" || skip "G1.3 ruff (not runnable)"
-    (cd backend && source .venv/bin/activate && PYTHONPATH=. pytest) && gate "G1.4b backend tests pass" || skip "G1.4b pytest (not runnable)"
+    if [ -f backend/.venv/bin/ruff ]; then
+      (cd backend && .venv/bin/ruff check . && .venv/bin/ruff format . --check) \
+        && gate "G1.3 ruff passes" || nogate "G1.3 ruff FAILED"
+    else
+      skip "G1.3 ruff (not runnable)"
+    fi
+    if [ -f backend/.venv/bin/pytest ]; then
+      (cd backend && PYTHONPATH=. .venv/bin/pytest) \
+        && gate "G1.4b backend tests pass" || nogate "G1.4b pytest FAILED"
+    else
+      skip "G1.4b pytest (not runnable)"
+    fi
   fi
 
   if [ -d frontend/dist ]; then
