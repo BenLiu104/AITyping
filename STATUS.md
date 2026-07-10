@@ -5,8 +5,8 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 —「柔和生活風」主畫面 UI 改版 + cleanup mode re-run UX 已完成並 merge 入 `main`；UI 改版 Ben 已確認「效果都 ok」
-- **Branch**: `refactor/project-structure-integration`（Task 8 最終整合 branch，自 `main` 開出，以 `--no-ff` 併入 7 個已完成獨立 refactor branch：Task 1 trace-privacy + Task 4 docs、Task 2 gate truthfulness、Task 3 docker context hygiene、Task 5 scaffold hygiene、Task 6 cleanup boundary + Task 7 recording session）
+- **Phase**: Phase 2 — feat/sensevoice-container-poc：本地 ARM64 容器 POC 完成並 commit（6103a1d）
+- **Branch**: `feat/sensevoice-container-poc`
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
@@ -53,6 +53,24 @@
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-10 16:20 PDT — SenseVoice 本地容器 POC（feat/sensevoice-container-poc, commit 6103a1d）
+- sensevoice/Dockerfile (新增): Python 3.11-slim, UID 1000, port 7860; bake-in streaming ONNX +
+  FunASR .pt; CMD uses --preload (api.py supports --host/--port/--preload only).
+- sensevoice/.dockerignore (新增): 排除 venv/ __pycache__ *.pyc 等，保留 src/req/checksum/tests.
+- docker-compose.yml: sensevoice service, profile sensevoice-local, port 7860; default up 不啟動.
+- sensevoice/README.md + DEPLOY.md: 新增 POC 說明、§7 容器狀態表.
+- unit tests: 5/5 OK (sensevoice PYTHONPATH venv)
+- docker build: 成功, image 3.16 GB (ARM64 aarch64)
+- /ping: {"status":"ok","model_loaded":true} OK
+- WS handshake: LANG:yue + 3200B PCM frame + END → end_ack received OK
+- docker compose logs: server startup / /ping 200 / WS open+close 全可見
+- POC container down: aityping-sensevoice-poc removed
+- systemd sensevoice-api.service: active, /ping on :8082 {"model_loaded":true,"status":"ok"} ✅
+- x86 / HF Spaces 驗證: ⏳ pending
+- git diff --check: ✅; .hermes/ 未 stage; commit 6103a1d on feat/sensevoice-container-poc
+```
 
 ```text
 2026-07-10 09:30 PDT — Task 7: extract recording session (refactor/recording-session-boundary)
