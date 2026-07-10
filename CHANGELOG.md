@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- `check.sh` G1.3/G1.4b 閘門邏輯錯誤：原先用 `|| skip` 把 Ruff / pytest 真實失敗隱藏成 SKIP，導致 `bash check.sh all` 在 Ruff 格式不對的情況下仍然 exit 0。修正為先以 `.venv/bin/ruff` 存在與否判斷工具是否可用（SKIP），工具存在但 return non-zero 則記 `nogate`（FAIL）；同樣方式修正 pytest 閘門。同步 `ruff format` 格式化 `backend/app/gemini/adapter.py` 與 `backend/app/tests/test_adapter.py`（僅排版，無行為修改）。
 - Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
 
 ### Added

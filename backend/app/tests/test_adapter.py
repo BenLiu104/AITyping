@@ -48,9 +48,7 @@ async def test_generate_ephemeral_token_uses_auth_tokens_create(monkeypatch):
     adapter = GeminiAdapter(api_key="real-backend-api-key", mock_mode=True)
     adapter.mock_mode = False
 
-    result = await adapter.generate_ephemeral_token(
-        ttl_seconds=3600, profile="english"
-    )
+    result = await adapter.generate_ephemeral_token(ttl_seconds=3600, profile="english")
 
     assert result["token"] == "auth_tokens/test-ephemeral-token"
     assert result["token"] != "real-backend-api-key"

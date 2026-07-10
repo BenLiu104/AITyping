@@ -77,9 +77,7 @@ class GeminiAdapter:
                 "responseModalities": ["AUDIO"],
                 "inputAudioTranscription": {},
                 "systemInstruction": {
-                    "parts": [
-                        {"text": self._build_transcription_instruction(profile)}
-                    ]
+                    "parts": [{"text": self._build_transcription_instruction(profile)}]
                 },
             },
         }

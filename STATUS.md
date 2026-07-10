@@ -55,6 +55,15 @@
 ## 4. Current Verification Snapshot
 
 ```text
+2026-07-10 08:12 PDT — Task 2: check.sh G1.3/G1.4b gate truthfulness fix
+- RED proof（修正前）：ruff format --check exit 1，但舊腳本仍 exit 0（gate 計 SKIP）
+- check.sh 修正：`.venv/bin/ruff` 存在與否決定 SKIP，存在但 exit non-zero → nogate(FAIL)；同樣修正 pytest 閘門
+- GREEN：backend ruff format 2 files reformatted（adapter.py / test_adapter.py）；backend ruff check / format check、pytest 32/32 ✅；`bash check.sh phase1` 8 pass / 0 fail / 0 skip ✅
+- 反向 proof：暫時加入 formatter-only probe 後，`bash check.sh phase1` 在 G1.3 正確 FAIL 並 exit 1；probe 已還原，無殘留修改
+- `bash check.sh all` 只因 feature branch / dirty working tree 的 G0.2b/G0.2c 而 exit 1；`git diff --check` ✅。
+```
+
+```text
 2026-07-08 15:00 PDT — Gemini Live 1011 regression 修好（constrained endpoint setup 鎖入 token）
 - 根因：v1alpha BidiGenerateContentConstrained WS 拒絕 client 送出的任何 setup（連空 {} 亦 1011）。正解＝完整 setup 鎖入 ephemeral token 的 live_connect_constraints.config，前端只送空 {setup:{}}。
 - backend（container 內）: python -m pytest 32/32 ✅（新增 profile route forward / unknown-profile normalize / 5 條 parametrized instruction-by-profile）; ruff check ✅
