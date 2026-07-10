@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Removed
+- 刪除 Vite scaffold 殘留 artifacts（無任何 runtime / test / config 引用）：`frontend/src/App.css`、`frontend/src/assets/react.svg`、`frontend/src/assets/vite.svg`、`frontend/src/live/sensevoice-client.ts`（已被 `sensevoice-ws-client.ts` 取代的舊 REST client）、`frontend/src/test/smoke.test.ts`（純 1+1 placeholder）、`frontend/README.md`（Vite 模板說明）。Test count 48 → 47，其餘閘門不變。
+
 ### Fixed
 - Gemini Live 英文 / 繁中聽寫連線一直 `1011 (internal error)` 斷線的 regression：`v1alpha` constrained WebSocket endpoint（`BidiGenerateContentConstrained`）會拒絕 client 送出的任何 setup 內容（連空 `{}` 亦拒），故此連線一直建立唔到。修正為將**完整 setup 鎖入 ephemeral token 的 `live_connect_constraints.config`**（`responseModalities` / `inputAudioTranscription` / `systemInstruction`）於簽發時定死，前端 `sendSetupMessage` 改為只送空 `{ setup: {} }` frame 觸發 `setupComplete`。伺服器端到端實測（真 Google endpoint）：english / cantonese-english / auto profile 全部回 `setupComplete` ✅。
 
