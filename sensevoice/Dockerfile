@@ -104,7 +104,7 @@ RUN python verify_funasr_cache.py
 # ── Source files (copy LAST — after all expensive model layers) ──────────────
 # Editing api.py / tests must NOT invalidate the model fetch/preload/verify
 # layers above, so these are the final COPY before ownership + runtime.
-COPY api.py ./
+COPY api.py sensevoice_token.py ./
 COPY tests/ ./tests/
 
 # Transfer ownership of app dir + HF cache to the non-root user

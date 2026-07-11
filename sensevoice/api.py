@@ -56,6 +56,11 @@ TRACE_ROOT = Path("/tmp/sv-debug")
 # from what inference actually uses.
 from model_pins import SENSEVOICE_MODEL_REVISION, FSMN_VAD_MODEL_REVISION
 
+# WS v2 token validator (stdlib-only mirror of the backend minter; the two
+# Docker contexts are separate so they do not import each other — see
+# contracts/sensevoice_ws_token_vectors.json for the shared wire contract).
+import sensevoice_token
+
 app = Flask(__name__)
 CORS(app)
 sock = Sock(app)
@@ -669,9 +674,16 @@ def ws_transcribe(ws):
 @sock.route("/ws/transcribe-v2")
 def ws_transcribe_v2(ws):
     """
-    Incremental SenseVoice streaming endpoint.
+    Incremental SenseVoice streaming endpoint (token-gated).
 
-    Protocol:
+    Authorization: the browser cannot set WS headers, so the client appends a
+    backend-signed short-lived token as the ``?token=`` query parameter. The
+    token is validated BEFORE we log "connection opened", instantiate the
+    StreamingTranscriptionBridge, or touch any model. Invalid/expired/wrong-
+    audience/missing-secret all close the socket generically without echoing the
+    token.
+
+    Protocol (post-auth):
       Client → Server: binary PCM frames (16kHz, 16-bit LE, mono)
                         OR text "LANG:<language>"
                         OR text "END"
@@ -679,8 +691,39 @@ def ws_transcribe_v2(ws):
                         OR {"transcript": "", "is_final": true, "end_ack": true}
                         OR {"error": "..."}
     """
+    token = request.args.get("token")
+    serve_ws_v2(ws, token)
+
+
+def serve_ws_v2(ws, token, *, bridge_factory=None, secret=None):
+    """Token-gated v2 WS session runner (transport-agnostic for testing).
+
+    ``ws`` only needs ``receive`` / ``send`` / ``close``. ``bridge_factory`` is
+    a callable ``(sender) -> bridge`` (defaults to StreamingTranscriptionBridge)
+    and is NEVER called until the token validates — this is the security
+    boundary the auth tests assert. ``secret`` defaults to the process env.
+    """
+    if secret is None:
+        secret = sensevoice_token.load_secret()
+
+    # ── Auth gate: validate BEFORE any log / bridge / model work ──────────────
+    try:
+        sensevoice_token.validate_token(secret, token)
+    except sensevoice_token.TokenConfigError:
+        # Secret absent/invalid on this side → fail closed. Do not echo token.
+        logger.warning("WS /ws/transcribe-v2: rejected (token secret unavailable)")
+        _safe_ws_close(ws)
+        return
+    except sensevoice_token.TokenValidationError:
+        # Malformed/expired/tampered/wrong-audience. Generic rejection, no echo.
+        logger.info("WS /ws/transcribe-v2: rejected (invalid token)")
+        _safe_ws_close(ws)
+        return
+
+    # ── Authorized past this point only ───────────────────────────────────────
     logger.info("WS /ws/transcribe-v2: connection opened")
-    bridge = StreamingTranscriptionBridge(sender=ws.send)
+    factory = bridge_factory or (lambda sender: StreamingTranscriptionBridge(sender=sender))
+    bridge = factory(ws.send)
 
     try:
         while True:
@@ -705,6 +748,18 @@ def ws_transcribe_v2(ws):
     finally:
         bridge.finish("connection_closed")
         logger.info("WS /ws/transcribe-v2: connection closed")
+
+
+def _safe_ws_close(ws) -> None:
+    """Send a generic error + close, never echoing the presented token."""
+    try:
+        ws.send(json.dumps({"error": "unauthorized"}))
+    except Exception:
+        pass
+    try:
+        ws.close(1008)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
