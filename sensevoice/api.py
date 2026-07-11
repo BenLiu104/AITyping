@@ -22,6 +22,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sock import Sock
 from simple_websocket.errors import ConnectionClosed
+from werkzeug.serving import WSGIRequestHandler
 from sense_voice_streaming_asr.model_data import SenseVoiceModel, VadModel
 from sense_voice_streaming_asr.sense_voice_streaming_asr import SenseVoiceStreamingASR, StreamingASRConfig
 
@@ -46,6 +47,21 @@ logging.basicConfig(
     force=True,
 )
 logger = logging.getLogger(__name__)
+
+
+def redact_request_target(path: str) -> str:
+    """Keep Werkzeug access logs useful without persisting WS query tokens."""
+    return path.split("?", 1)[0]
+
+
+class RedactingRequestHandler(WSGIRequestHandler):
+    """Werkzeug development-server handler that never logs URL query strings."""
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        request_line = f"{self.command} {redact_request_target(self.path)} {self.request_version}"
+        self.log('"%s" %s %s', request_line, code, size)
+
+
 TRACE_ROOT = Path("/tmp/sv-debug")
 
 # Pinned FunASR (HF hub) model revisions — imported from model_pins.py, the
@@ -779,4 +795,9 @@ if __name__ == "__main__":
         get_streaming_models()
 
     logger.info(f"Starting API server on {args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=False)
+    app.run(
+        host=args.host,
+        port=args.port,
+        debug=False,
+        request_handler=RedactingRequestHandler,
+    )
