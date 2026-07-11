@@ -108,9 +108,14 @@ class ComposeProfileContractTests(unittest.TestCase):
         block = self.compose[self.compose.index("sensevoice:"):]
         self.assertNotIn("restart:", block, "POC sensevoice service must not set a restart policy")
 
-    def test_port_mapping_is_7860(self) -> None:
+    def test_host_port_is_configurable_with_7860_container_port(self) -> None:
         block = self.compose[self.compose.index("sensevoice:"):]
-        self.assertIn("7860:7860", block)
+        self.assertIn('"${SENSEVOICE_HOST_PORT:-7860}:7860"', block)
+
+    def test_sensevoice_receives_only_shared_ws_secret(self) -> None:
+        block = self.compose[self.compose.index("sensevoice:"):]
+        self.assertIn("SENSEVOICE_WS_TOKEN_SECRET", block)
+        self.assertNotIn("env_file:", block)
 
 
 class ModelPinContractTests(unittest.TestCase):
