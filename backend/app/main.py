@@ -5,6 +5,7 @@ from app.routes.cleanup import router as cleanup_router
 from app.routes.debug import router as debug_router
 from app.routes.smart_cleanup import router as smart_cleanup_router
 from app.routes.token import router as token_router
+from app.routes.sensevoice_token import router as sensevoice_token_router
 
 app = FastAPI(
     title="AITyping Backend API",
@@ -24,6 +25,7 @@ app.add_middleware(
 # 註冊 API 路由
 app.include_router(cleanup_router, prefix="/api")
 app.include_router(token_router, prefix="/api")
+app.include_router(sensevoice_token_router, prefix="/api")
 app.include_router(debug_router, prefix="/api")
 app.include_router(smart_cleanup_router, prefix="/api")
 

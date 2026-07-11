@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     MOCK_MODE: bool = False
     LIVE_TOKEN_TTL: int = 600
 
+    # SenseVoice v2 WebSocket 短效簽名 token（後端簽發、SenseVoice 驗證）。
+    # 真值只在 .env（已 gitignore）。缺 secret 時 mint endpoint fail closed 503。
+    # TTL 有上下界，預設 60 秒。
+    SENSEVOICE_WS_TOKEN_SECRET: str = ""
+    SENSEVOICE_WS_TOKEN_TTL: int = 60
+
     # Gemini Live 轉錄 system instruction（依 profile 鎖入 ephemeral token 的
     # live_connect_constraints；constrained endpoint 會忽略 client 端送的 setup，
     # 故 systemInstruction 必須在簽發 token 時鎖定，而非由前端 setup frame 送出）。
