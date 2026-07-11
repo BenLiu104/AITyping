@@ -55,7 +55,30 @@
 ## 4. Current Verification Snapshot
 
 ```text
-2026-07-10 16:20 PDT — SenseVoice 本地容器 POC（feat/sensevoice-container-poc, commit 6103a1d）
+2026-07-10 16:55 PDT — SenseVoice 容器 POC 修復（feat/sensevoice-container-poc，Attempt-1 review 缺陷修復）
+- Dockerfile layer 重排：requirements → pip install → COPY(fetch_models/models.sha256/
+  funasr_models.sha256/verify_funasr_cache.py/model_pins.py) → ONNX fetch → FunASR preload →
+  verify_funasr_cache → COPY api.py → COPY tests/。api.py/tests 喺所有昂貴 model layer 之後先 COPY。
+- Cache-proof（改 api.py 加臨時 marker 再 build）：#8 ONNX fetch = CACHED、#9 FunASR preload = CACHED、
+  #15 verify_funasr_cache = CACHED；只有 #16 COPY api.py 重跑。臨時 marker 已完全還原（git checkout 後重貼 pin edits）。
+- Model pin：model_pins.py 為 runtime(api.py) + build(Dockerfile preload) 共用單一來源。
+  SenseVoiceSmall=3847d57b…、fsmn-vad=df20e6b3…（由現行 host cache 取得，非杜撰）。api.py 兩處 AutoModel 用 model_revision= pin。
+- 完整性：streaming ONNX 仍由 package 目錄 sha256sum -c models.sha256（build #8 內 7 檔 OK）；
+  baked FunASR .pt 由 funasr_models.sha256 + verify_funasr_cache.py 核對（build #15：9 artifacts All verified）。
+- modelscope==1.38.1 pin 入 requirements.txt；Dockerfile 移除獨立 `pip install modelscope`。
+- .dockerignore 補排除 loose model blobs（*.onnx/*.pt/*.mvn/*.model 等 + hub/ .cache/ modelscope/ funasr/）。
+- 靜態 config 契約測試 tests/test_container_config.py（stdlib，10 tests）：cache 分層 / profile gating / pin 契約，全綠。
+- DEPLOY.md：修正重複 heading 編號（§5 測試 → §6 容器化 → §7 已知坑），補「模型 pin 與完整性（容器）」表。
+- 測試：sensevoice unittest 15/15 OK（test_ws_v2 5 + test_container_config 10）。
+- docker build（native ARM64 aarch64, BuildKit）：成功，image aityping-sensevoice:latest 8.13GB（compressed config ~2.94GB）。
+- POC 容器 /ping + WS handshake：見下方 runtime 驗證（LANG + PCM + END → end_ack）。
+- systemd sensevoice-api.service：全程 active，:8082 /ping {"model_loaded":true,"status":"ok"} ✅ 未受容器影響。
+- x86 / HF Spaces 驗證：⏳ pending（未開始，不在本修復範圍）。
+- host systemd 仍為 canonical production 邊界；容器 POC 為實驗性，未上線。
+```
+
+```text
+2026-07-10 16:20 PDT — SenseVoice 本地容器 POC（feat/sensevoice-container-poc, commit 6103a1d，初版）
 - sensevoice/Dockerfile (新增): Python 3.11-slim, UID 1000, port 7860; bake-in streaming ONNX +
   FunASR .pt; CMD uses --preload (api.py supports --host/--port/--preload only).
 - sensevoice/.dockerignore (新增): 排除 venv/ __pycache__ *.pyc 等，保留 src/req/checksum/tests.

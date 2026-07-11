@@ -48,6 +48,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 TRACE_ROOT = Path("/tmp/sv-debug")
 
+# Pinned FunASR (HF hub) model revisions — imported from model_pins.py, the
+# single source of truth shared with the container build (Dockerfile preload)
+# and validated by funasr_models.sha256. Keeping them at the actual runtime
+# AutoModel call site guarantees the host systemd runtime and the container
+# load the SAME artifacts, so the baked integrity manifest cannot drift away
+# from what inference actually uses.
+from model_pins import SENSEVOICE_MODEL_REVISION, FSMN_VAD_MODEL_REVISION
+
 app = Flask(__name__)
 CORS(app)
 sock = Sock(app)
@@ -67,6 +75,7 @@ def get_vad_model():
             from funasr import AutoModel
             _vad_model = AutoModel(
                 model="fsmn-vad",
+                model_revision=FSMN_VAD_MODEL_REVISION,
                 hub="hf",
                 disable_update=True,
             )
@@ -93,6 +102,7 @@ def get_model():
 
         _model = AutoModel(
             model="FunAudioLLM/SenseVoiceSmall",
+            model_revision=SENSEVOICE_MODEL_REVISION,
             trust_remote_code=True,
             hub="hf",
             disable_update=True,

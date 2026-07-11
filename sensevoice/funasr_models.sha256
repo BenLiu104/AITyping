@@ -1,0 +1,29 @@
+# FunASR (HF hub) model integrity manifest — baked container cache
+#
+# 用途：容器 build 時 preload FunASR SenseVoiceSmall + FSMN-VAD (.pt) 之後，
+#       用 verify_funasr_cache.py 核對 baked 落 /home/user/.cache/huggingface/hub
+#       嘅真權重（model.pt 等）係 pinned revision 嘅正確 artifact，而唔係
+#       靜默 drift 到 upstream 新 commit。
+#
+# 來源：本 manifest 由現行 production host cache（~/.cache/huggingface/hub，
+#       sensevoice-api.service 實際載入嘅同一份）直接 sha256 取得，非人手杜撰。
+#
+# 格式：<sha256>  models--<repo>/snapshots/<revision>/<file>
+# 路徑相對 HF hub 根（$HF_HOME/hub）。revision 同 api.py / Dockerfile preload
+# 嘅 model_revision pin 一致。
+#
+# 註：streaming ONNX 權重（sense_voice_streaming_asr/models/）由另一份
+#     models.sha256 管，喺 package 目錄核對，兩者互不重疊。
+
+# ── SenseVoiceSmall (FunAudioLLM/SenseVoiceSmall @ 3847d57b) ──────────────────
+29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5  models--FunAudioLLM--SenseVoiceSmall/snapshots/3847d57b6bdf2dd8875cb1508d2af43d80a16bf7/am.mvn
+f71e239ba36705564b5bf2d2ffd07eece07b8e3f2bbf6d2c99d8df856339ac19  models--FunAudioLLM--SenseVoiceSmall/snapshots/3847d57b6bdf2dd8875cb1508d2af43d80a16bf7/config.yaml
+02810a7f8e9e8aee10370a265f7e799728ce25b4c00cdbf4602b303ee395a38e  models--FunAudioLLM--SenseVoiceSmall/snapshots/3847d57b6bdf2dd8875cb1508d2af43d80a16bf7/configuration.json
+aa87f86064c3730d799ddf7af3c04659151102cba548bce325cf06ba4da4e6a8  models--FunAudioLLM--SenseVoiceSmall/snapshots/3847d57b6bdf2dd8875cb1508d2af43d80a16bf7/chn_jpn_yue_eng_ko_spectok.bpe.model
+833ca2dcfdf8ec91bd4f31cfac36d6124e0c459074d5e909aec9cabe6204a3ea  models--FunAudioLLM--SenseVoiceSmall/snapshots/3847d57b6bdf2dd8875cb1508d2af43d80a16bf7/model.pt
+
+# ── FSMN-VAD (funasr/fsmn-vad @ df20e6b3) ────────────────────────────────────
+df189fd5f4352df84a0fd464eeab4e450a5e645665d6b38f13c832492261a739  models--funasr--fsmn-vad/snapshots/df20e6b30c653645fa4ff125cacfcabd1020a669/am.mvn
+486861ca26ddb79081663b6179cb204c6bfae71c52f04aafc48a9e9d8dde1e93  models--funasr--fsmn-vad/snapshots/df20e6b30c653645fa4ff125cacfcabd1020a669/config.yaml
+7bce8867e37d55c3dd8f672695ced18077a2be199ea529a5d432d5350fc0acba  models--funasr--fsmn-vad/snapshots/df20e6b30c653645fa4ff125cacfcabd1020a669/configuration.json
+b3be75be477f0780277f3bae0fe489f48718f585f3a6e45d7dd1fbb1a4255fc5  models--funasr--fsmn-vad/snapshots/df20e6b30c653645fa4ff125cacfcabd1020a669/model.pt

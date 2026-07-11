@@ -23,6 +23,7 @@ torchaudio==2.11.0
 # 只依賴 kaldi_native_fbank / onnxruntime / sounddevice（ONNX 推論，供 WS v2 streaming）。
 sense-voice-streaming-asr @ git+https://github.com/nikoseven/sense-voice-streaming-asr.git@fc75534f89ce880f0730954d1621757a62b30835
 funasr==1.3.14                       # FSMN-VAD + SenseVoiceSmall 模型載入（file 轉錄路徑）
+modelscope==1.38.1                   # fetch_models.py 直接 import（snapshot_download 取 streaming ONNX）；pin 版本免 Docker 內 unpinned 安裝
 
 # ── 音訊處理 ──────────────────────────────────────
 librosa==0.11.0

@@ -120,12 +120,18 @@ WantedBy=multi-user.target
 
 ```bash
 cd sensevoice
+# WS v2 streaming 單元測試（mock ASR runtime，無需真模型，~0.04s）
 PYTHONPATH=. ./venv/bin/python -m unittest tests.test_ws_v2 -v
+# 容器 config 契約靜態測試（Dockerfile cache 分層 / compose profile / model pin）
+PYTHONPATH=. ./venv/bin/python -m unittest tests.test_container_config -v
 ```
 
-> 測試用 `FakeProcessor` mock 咗 ASR runtime，唔需要真模型，可快速跑（~0.04s）。
+> `test_ws_v2` 用 `FakeProcessor` mock 咗 ASR runtime，唔需要真模型。
+> `test_container_config` 純 stdlib 靜態解析 Dockerfile / docker-compose.yml /
+> .dockerignore / model_pins.py，守住 build-cache 分層、profile gating、model
+> revision pin 契約，改壞即 fail。
 
-## 7. 容器化部署（實驗性 / HF Spaces 準備中）
+## 6. 容器化部署（實驗性 / HF Spaces 準備中）
 
 > ⚠️ **現行 canonical production 路徑：host systemd `sensevoice-api.service`（port 8082）+ Cloudflare Tunnel。**
 > 容器路徑為實驗性 POC，**尚未上線**，不改動任何現行服務。
@@ -154,13 +160,28 @@ docker compose --profile sensevoice-local down
   若掛載 `~/.cache/huggingface` runtime mount，**會靜默遮蓋** bake 入的模型副本；
   POC 不需要此 mount。
 
+### 模型 pin 與完整性（容器）
+
+容器把兩類模型 bake 入 image，各有獨立 pin + 完整性 manifest：
+
+| 類別 | 來源 | pin 定義處 | 完整性 manifest | build 內驗證 |
+|---|---|---|---|---|
+| streaming ONNX | ModelScope `iic/*` | `fetch_models.py` MODELS[].revision | `models.sha256`（package 目錄核對） | `sha256sum -c models.sha256` |
+| FunASR `.pt`（SenseVoiceSmall + FSMN-VAD） | HF hub | `model_pins.py`（api.py runtime 亦 import 同一份） | `funasr_models.sha256`（baked HF cache 核對） | `verify_funasr_cache.py` |
+
+> `model_pins.py` 係 runtime（`api.py`）同 build（Dockerfile preload）**共用嘅單一 pin 來源**，
+> 確保 host systemd 同容器載入完全相同嘅 artifact，manifest 不會與實際推理 drift。
+> Dockerfile 已重排 layer：只有 requirements / fetch_models / manifests / model_pins
+> 喺昂貴 model layer 前 COPY；`api.py` / `tests/` 喺所有 fetch/preload/verify layer
+> **之後**先 COPY，改 source 唔會 bust model cache。
+
 ### 遷移決策（尚未確認）
 
 容器化最終路徑預計為 Hugging Face CPU Docker Space，對外提供 public endpoint，
 backend 簽發 short-lived WS token 做存取控制。此決策**尚未批准 / 尚未實作**，
 不在本 POC 範圍內。
 
-## 6. 已知坑（redeploy 必讀）
+## 7. 已知坑（redeploy 必讀）
 
 **venv 不可搬移。** venv `bin/` 內嘅 script（`pip`、`ruff` 等）shebang 寫死絕對路徑
 （`#!/…/venv/bin/python3.11`）。`mv`／`cp -r` venv 去新路徑後，呢啲 shebang 仍指舊路徑，
