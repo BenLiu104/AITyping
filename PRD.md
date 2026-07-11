@@ -132,6 +132,33 @@ iPhone Safari (PWA)
 
 > 改合約 = 同步更新這裡 + 前後端 + test。
 
+### 6.4 `POST /api/sensevoice-token`（SenseVoice v2 WS 短效簽名 token）
+
+> 狀態：已實作、Ben 已核准此 API / 安全設計。**目前僅在 feature branch，未部署**；生產 SenseVoice 仍是 host systemd（port 8082），此 token 尚未在生產啟用。
+
+**用途：** 瀏覽器無法為 WebSocket 加自訂 header，故 SenseVoice v2 WS（`/ws/transcribe-v2`）改為 token-gated：前端先 `POST /api/sensevoice-token` 取得後端簽發的短效 token，再把 URL-encoded token 以 **query parameter**（`?token=...`）接到 WS URL。
+
+**Request:** 無 body、無 query。
+
+**Response 200:**
+```json
+{ "token": "<base64url_payload>.<base64url_hmac>", "expiresAt": 1750000000 }
+```
+- `Cache-Control: no-store`（短效憑證，不快取）。
+- `token`：緊湊、URL-safe、**HMAC-SHA256 簽名**的 payload（Python stdlib，不依賴 JWT）。Payload 含 `v`（版本，固定 2）、`aud`（audience，固定字串 `sensevoice-ws-v2`）、`exp`（絕對到期 epoch）、`nonce`（密碼學隨機）。canonical JSON（sorted keys、tight separators）+ unpadded base64url；驗證用 `hmac.compare_digest`。
+- `expiresAt`：絕對到期 epoch 秒。
+
+**設定：** 後端與 SenseVoice 共用同一 `SENSEVOICE_WS_TOKEN_SECRET`（兩個 Docker context 各自讀 env，**不互相 import**）；`SENSEVOICE_WS_TOKEN_TTL` 預設 60 秒、有界 5–300。
+
+**失敗：** secret 缺失/無效 → fail closed `503 { "detail": "..." }`（安全訊息，token / secret 一律不落 log / error）。
+
+**SenseVoice 驗證：** v2 WS 在 **log「connection opened」、建立 `StreamingTranscriptionBridge`、載入任何模型之前** 先驗證 query token。無效 / 過期 / 錯 audience / secret 缺失一律 generic error + close（不回顯 token）。
+
+- **互通契約：** 兩端各自實作同一 HMAC 方案，靠 source-controlled 固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試套件都 assert）防止協定漂移。
+- **⚠️ 已知邊界（legacy）：** 此 task 只保護 `/ws/transcribe-v2`。SenseVoice 的 legacy endpoint（`/transcribe`、`/transcribe_batch`、`/ws/transcribe`）**未** 加 token gate，故單靠此 token **不構成** 完整的 public HF Space 安全釋出——公開前必須另行處理或關閉 legacy endpoint。
+
+> 改合約 = 同步更新這裡 + 前後端 + test。
+
 ## 7. 音訊管線規格 (Audio Pipeline)
 - 取音：`getUserMedia({ audio: { echoCancellation, noiseSuppression, autoGainControl } })`
 - AudioContext：Safari 可能不尊重指定 sampleRate（常給 48000）→ **JS 自己 resample 到 16000**。

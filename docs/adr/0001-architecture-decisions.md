@@ -44,3 +44,12 @@
 - **模型選定：**
   - **Live API 模型**：`models/gemini-3.1-flash-live-preview` (Gemini Live API)
   - **Cleanup 整理模型**：`gemini-3.1-flash-lite` (FastAPI 後端調用)
+
+## 決策 8：SenseVoice v2 WS 用後端簽發的短效 HMAC token（stdlib，非 JWT）
+
+> 狀態：Accepted · 日期：2026-07-10 · Ben 核准此 API / 安全設計
+
+- **選擇：** SenseVoice `/ws/transcribe-v2` 改為 token-gated。後端 `POST /api/sensevoice-token` 用共用 `SENSEVOICE_WS_TOKEN_SECRET` 簽發緊湊、URL-safe、HMAC-SHA256 簽名的短效 token（payload：`v` / `aud=sensevoice-ws-v2` / `exp` / 隨機 `nonce`；canonical JSON + unpadded base64url；驗證用 `hmac.compare_digest`）。前端先取 token，再把 URL-encoded token 以 query parameter 接到 WS URL。SenseVoice 在 log「connection opened」/ 建 bridge / 載模型前先驗證。
+- **理由：** 為把 SenseVoice 移到 public HF CPU Space 做準備——公開端點必須先有存取控制，否則任何人可白嫖 CPU 推理。瀏覽器無法為 WebSocket 設自訂 header，故 token 只能走 query parameter。選 stdlib HMAC 而非 JWT：payload 極簡、無需額外依賴、兩端各自實作即可，攻擊面更小。
+- **防協定漂移：** 後端 minter 與 SenseVoice validator 分屬兩個 Docker context、runtime 不互相 import；靠 source-controlled 固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試套件都 assert）鎖住 wire format。
+- **取捨 / 已知邊界：** 此決策只保護 v2 WS。legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` 未 gate，故單靠此 token **不構成** 完整的 public Space 安全釋出；公開前必須另行處理或關閉 legacy endpoint。TTL 有界（預設 60s、5–300）以限縮被竊 token 的可用窗口。

@@ -62,6 +62,26 @@ Response: `{"status": "ok", "model_loaded": true}`
 
 這是前端現用的唯一推薦接口。
 
+### 授權（短效簽名 token，必須）
+
+瀏覽器無法為 WebSocket 加自訂 header，故 v2 WS 改為 **token-gated**：
+
+1. 前端先向 AITyping backend `POST /api/sensevoice-token`，取得後端簽發的短效 token（`{token, expiresAt}`）。
+2. 前端把 URL-encoded token 以 **query parameter** 接到 WS URL：`wss://.../ws/transcribe-v2?token=<url-encoded>`。
+3. SenseVoice 在 **log「connection opened」、建立 `StreamingTranscriptionBridge`、載入任何模型之前** 先驗證 token；無效 / 過期 / 錯 audience / secret 缺失一律 generic error + close（`1008`），不回顯 token。
+
+Token 為緊湊、URL-safe、HMAC-SHA256 簽名的 payload（Python stdlib，無 JWT）：payload 含 `v`（版本 2）/ `aud`（固定 `sensevoice-ws-v2`）/ `exp`（絕對到期 epoch）/ 隨機 `nonce`；canonical JSON + unpadded base64url；驗證用 `hmac.compare_digest`。
+
+環境變數（SenseVoice 端）：
+
+```bash
+SENSEVOICE_WS_TOKEN_SECRET=<與 backend 共用的同一個 secret>
+```
+
+> 後端 minter（`backend/app/security/sensevoice_token.py`）與此處 validator（`sensevoice/sensevoice_token.py`）**兩個 Docker context 不互相 import**，靠固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試都 assert）保持 wire-compatible。缺 secret → 此端 fail closed，直接拒連。
+
+**⚠️ 已知邊界：** token gate 只保護 `/ws/transcribe-v2`。下方 legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` **未** 加 token gate，故單靠此 token **不足以** 安全公開整個 HF Space——公開前必須另行處理或關閉 legacy endpoint。
+
 ### 音訊格式（必須）
 
 - **Encoding**: 16-bit signed little-endian PCM（raw，無 WAV header）

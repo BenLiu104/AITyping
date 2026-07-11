@@ -113,8 +113,12 @@ WantedBy=multi-user.target
 | GET  | `/ping` | 健康檢查 |
 | POST | `/transcribe` | 單檔轉錄 |
 | POST | `/transcribe_batch` | 批量 |
-| WS   | `/ws/transcribe` | streaming v1（保留回退） |
-| WS   | `/ws/transcribe-v2` | ★ streaming v2（前端現用） |
+| WS   | `/ws/transcribe` | streaming v1（保留回退，**未 token-gate**） |
+| WS   | `/ws/transcribe-v2` | ★ streaming v2（前端現用，**token-gated**） |
+
+> **v2 授權：** `/ws/transcribe-v2` 要求後端簽發的短效 HMAC token（見 README「授權」節）。
+> 部署時必須設 `SENSEVOICE_WS_TOKEN_SECRET`（與 AITyping backend 共用同一 secret）；缺 secret 即 fail closed 拒連。
+> **⚠️ 公開前提：** token gate 只保護 v2 WS；legacy `/transcribe`、`/transcribe_batch`、`/ws/transcribe` 未 gate，故單靠此 token **不足以** 安全公開 HF Space——公開前必須另行處理或關閉 legacy endpoint。
 
 ## 5. 測試
 
