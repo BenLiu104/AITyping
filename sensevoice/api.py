@@ -742,7 +742,7 @@ def serve_ws_v2(ws, token, *, bridge_factory=None, secret=None):
         bridge.finish(f"error:{type(e).__name__}")
         logger.exception("WS /ws/transcribe-v2 error")
         try:
-            ws.send(json.dumps({"error": str(e)}))
+            ws.send(json.dumps({"error": "internal error"}))
         except Exception:
             pass
     finally:
