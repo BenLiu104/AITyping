@@ -34,6 +34,9 @@ const SENSEVOICE_WS_URL =
     ? `${window.location.origin.replace(/^http/, 'ws')}/ws/transcribe-v2`
     : '');
 
+// SenseVoice v2 WS 短效 token 簽發端點（後端 HMAC 簽發、SenseVoice 驗證）。
+const SENSEVOICE_TOKEN_URL = `${API_BASE}/api/sensevoice-token`;
+
 const getSpeechProfile = (language: Language): SpeechProfile => {
   if (language === 'mixed') return 'cantonese-english';
   if (language === 'yue') return 'cantonese';
@@ -301,6 +304,7 @@ export function useRecordingSession(callbacks: RecordingSessionCallbacks): Recor
 
           client = new SenseVoiceWsClient({
             wsUrl: SENSEVOICE_WS_URL,
+            tokenUrl: SENSEVOICE_TOKEN_URL,
             language: getSenseVoiceLanguage(language),
             onOpen: () => {
               cb.updateDebugSnapshot({ wsOpen: true });
@@ -344,7 +348,7 @@ export function useRecordingSession(callbacks: RecordingSessionCallbacks): Recor
           });
 
           liveClientRef.current = client;
-          client.connect();
+          await client.connect();
         } else {
           // ── Gemini Live API mode (English / Mandarin) ──
           cb.setLiveStatus('正在連線 Live API...');

@@ -10,6 +10,7 @@
 
 export interface SenseVoiceWsClientConfig {
   wsUrl: string;          // e.g. wss://your-sensevoice-host/ws/transcribe-v2
+  tokenUrl?: string;      // backend mint endpoint, e.g. /api/sensevoice-token
   language: string;       // 'yue' | 'zh' | 'auto'
   sampleRate?: number;    // PCM sample rate from AudioWorklet (default 16000)
   onTranscription: (text: string, isFinal: boolean) => void;
@@ -39,8 +40,40 @@ export class SenseVoiceWsClient {
     this.config = { sampleRate: 16000, ...config };
   }
 
-  /** 開啟 WebSocket 連線 */
-  connect() {
+  /**
+   * 開啟 WebSocket 連線。
+   *
+   * 若設定 tokenUrl：先 POST 取得後端簽發的短效 token，再把 URL-encoded token
+   * 以 query parameter 形式接到 v2 WS URL（瀏覽器無法為 WebSocket 加自訂 header）。
+   * token 取得失敗時安全地回報錯誤且不開 socket；token / 完整 URL 一律不 log。
+   * 未設 tokenUrl 時維持原本行為（同源 dev / 無 auth）。
+   */
+  async connect(): Promise<void> {
+    this.resetSessionState();
+
+    if (this.config.tokenUrl) {
+      let token: string;
+      try {
+        const res = await fetch(this.config.tokenUrl, { method: 'POST' });
+        if (!res.ok) throw new Error(`token endpoint ${res.status}`);
+        const data = (await res.json()) as { token?: string };
+        if (!data.token) throw new Error('missing token');
+        token = data.token;
+      } catch {
+        // Never surface the token URL or token material in the error.
+        this.config.onError('無法建立 SenseVoice 安全連線，請稍後再試');
+        this.resolveCompletion?.(this.fullTranscript);
+        return;
+      }
+      const sep = this.config.wsUrl.includes('?') ? '&' : '?';
+      this.openSocket(`${this.config.wsUrl}${sep}token=${encodeURIComponent(token)}`);
+      return;
+    }
+
+    this.openSocket(this.config.wsUrl);
+  }
+
+  private resetSessionState() {
     this.fullTranscript = '';
     this.endAckReceived = false;
     this.endSent = false;
@@ -48,8 +81,10 @@ export class SenseVoiceWsClient {
     this.completionPromise = new Promise((resolve) => {
       this.resolveCompletion = resolve;
     });
+  }
 
-    const ws = new WebSocket(this.config.wsUrl);
+  private openSocket(url: string) {
+    const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
 
