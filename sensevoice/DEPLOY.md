@@ -1,12 +1,12 @@
 # SenseVoice STT Service — 部署與維護
 
 > 廣東話語音轉文字 API，基於阿里 FunAudioLLM SenseVoiceSmall + `sense-voice-streaming-asr`
-> streaming wrapper。跑喺 VPS ARM64 CPU，**host systemd（唔係 Docker）**。
+> streaming wrapper。現行跑喺 VPS ARM64 CPU 的 **Docker Compose** service；host systemd unit 只保留作 rollback。
 >
 > - **Public**: `https://<sensevoice-domain>`（Cloudflare Tunnel）
-> - **Internal**: `http://<vps>:8082`
-> - **Service**: `sensevoice-api.service`
-> - **API 合約 / 操作指引**: 見 `README.md`
+> - **Host mapping**: `8082 → container 7860`
+> - **Service**: `docker compose --profile sensevoice-local up -d sensevoice`
+> - **Rollback**: `sensevoice-api.service`（現時 inactive）
 
 ---
 
@@ -18,13 +18,11 @@ AITyping 三大 service 之一：
 |---|---|---|---|
 | frontend | Vite PWA | GitHub Pages | `frontend/` |
 | backend | FastAPI（Gemini adapter） | VPS Docker | `backend/` |
-| **sensevoice** | **Flask + WS（本目錄）** | **VPS host systemd** | `sensevoice/` |
+| **sensevoice** | **Flask + WS（本目錄）** | **VPS Docker Compose（host 8082 → 7860）** | `sensevoice/` |
 
-前端經 `frontend/src/live/sensevoice-ws-client.ts` 打 `wss://.../ws/transcribe-v2`。
+前端經 `frontend/src/live/sensevoice-ws-client.ts` 先向 backend mint v2 token，再打 `wss://.../ws/transcribe-v2?token=...`。
 
-> ⚠️ **點解唔用 Docker**：模型 blob 大 + ARM64 CPU 推理要直接食 host 資源，
-> 現行決策係 host systemd + Cloudflare Tunnel 直通。切勿改成 Docker container
-> 而唔同 Ben 對齊（見 root `STATUS.md` §5 pitfalls）。
+> host `sensevoice-api.service` 尚未刪除，但不可與 container 同時 bind 8082；只在 rollback 時手動切換。
 
 ## 2. 從零部署（可重現）
 
@@ -135,34 +133,34 @@ PYTHONPATH=. ./venv/bin/python -m unittest tests.test_container_config -v
 > .dockerignore / model_pins.py，守住 build-cache 分層、profile gating、model
 > revision pin 契約，改壞即 fail。
 
-## 6. 容器化部署（實驗性 / HF Spaces 準備中）
+## 6. 容器化部署（現行 VPS runtime；HF Spaces 下一階段）
 
-> ⚠️ **現行 canonical production 路徑：host systemd `sensevoice-api.service`（port 8082）+ Cloudflare Tunnel。**
-> 容器路徑為實驗性 POC，**尚未上線**，不改動任何現行服務。
+> **現行 production 路徑：** VPS Docker Compose `sensevoice`，host `8082 → container 7860`，由既有 host Cloudflare Tunnel 導流。`sensevoice-api.service` 保留但 inactive 作 rollback。
 
 ### 現況
 
 | 路徑 | 狀態 |
 |---|---|
-| host systemd + CF Tunnel | ✅ Canonical production（本文件前面各節） |
-| 本地容器 POC | ✅ ARM64 build + handshake 已驗證（feat/sensevoice-container-poc） |
-| x86 / HF Docker Spaces | ⏳ Pending — 未驗證 |
-| Backend short-lived WS token | ⏳ Pending — 未實作 |
+| VPS Docker Compose + CF Tunnel | ✅ 已部署；Ben iPhone mixed-mode 驗收通過 |
+| host systemd + CF Tunnel | 🟡 rollback only；不可與 container 同時 bind 8082 |
+| x86 / HF Docker Spaces | ⏳ 下一階段規劃；尚未建立 Space / publish image / cutover |
+| Backend short-lived WS token | ✅ 已部署；shared secret 只注入 backend + SenseVoice container |
 
-### 本地 POC 快速運行
+### VPS container 操作
 
 ```bash
-# repo 根目錄
-docker compose --profile sensevoice-local build sensevoice
-docker compose --profile sensevoice-local up -d sensevoice
-curl http://localhost:7860/ping
-docker compose --profile sensevoice-local down
+# repo 根目錄；.env 必須有 SENSEVOICE_WS_TOKEN_SECRET
+SENSEVOICE_HOST_PORT=8082 docker compose --profile sensevoice-local up -d --build sensevoice
+curl http://localhost:8082/ping
+
+# rollback（先停 container 釋放 8082，才重啟 systemd）
+docker compose --profile sensevoice-local stop sensevoice
+sudo systemctl start sensevoice-api.service
 ```
 
-- `docker compose up`（無 profile）**不會**起此容器。
-- 映像在 build 時把 streaming ONNX + FunASR .pt 模型全數 bake in，無需 volume mount。
-  若掛載 `~/.cache/huggingface` runtime mount，**會靜默遮蓋** bake 入的模型副本；
-  POC 不需要此 mount。
+- `docker compose up`（無 profile）**不會**起 SenseVoice。
+- image build 時把 streaming ONNX + FunASR `.pt` 模型全數 bake in，無需 runtime cache volume。
+- `SENSEVOICE_WS_TOKEN_SECRET` 必須只由 Compose environment injection 傳入；不可使用 `env_file` 將 backend 的其他 secrets 傳進 STT container。
 
 ### 模型 pin 與完整性（容器）
 
@@ -179,11 +177,9 @@ docker compose --profile sensevoice-local down
 > 喺昂貴 model layer 前 COPY；`api.py` / `tests/` 喺所有 fetch/preload/verify layer
 > **之後**先 COPY，改 source 唔會 bust model cache。
 
-### 遷移決策（尚未確認）
+### HF 遷移決策（已確認，尚未執行）
 
-容器化最終路徑預計為 Hugging Face CPU Docker Space，對外提供 public endpoint，
-backend 簽發 short-lived WS token 做存取控制。此決策**尚未批准 / 尚未實作**，
-不在本 POC 範圍內。
+最終路徑為 Hugging Face CPU Docker Space，對外提供 public endpoint，沿用 backend 簽發 short-lived v2 WS token。先完成 x86 image、HF WS / cold-start 實測與 iPhone cutover 驗收，才停止 VPS Compose SenseVoice；詳見 root `STATUS.md` 的 HF migration plan。
 
 ## 7. 已知坑（redeploy 必讀）
 

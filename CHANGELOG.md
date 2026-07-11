@@ -7,7 +7,9 @@
 ## [Unreleased]
 
 ### Added
-- SenseVoice 本地容器 POC（`feat/sensevoice-container-poc`）：`sensevoice/Dockerfile`（Python 3.11-slim, UID 1000, port 7860, 模型 bake-in）、`sensevoice/.dockerignore`、`docker-compose.yml` `sensevoice-local` profile。ARM64 build + WS handshake 已驗證；x86 / HF Spaces pending。現行 host systemd `sensevoice-api.service` 為 canonical production，不受影響。
+- SenseVoice v2 short-lived HMAC WS token：backend `POST /api/sensevoice-token`（`Cache-Control: no-store`）+ frontend token mint / URL-encoded v2 WS connect + SenseVoice pre-bridge validation；shared contract vectors、expiry/audience/tamper tests，以及 access-log query-token redaction。Ben 已完成 iPhone mixed-mode 驗收。
+- SenseVoice VPS runtime migration：由 host systemd 改為 Docker Compose（host `8082 → container 7860`）；保留 inactive systemd unit 作 rollback，模型保持 bake-in / pinned / integrity-checked。
+- SenseVoice 本地容器 POC（`feat/sensevoice-container-poc`）：`sensevoice/Dockerfile`（Python 3.11-slim, UID 1000, port 7860, 模型 bake-in）、`sensevoice/.dockerignore`、`docker-compose.yml` `sensevoice-local` profile。ARM64 build + WS handshake 已驗證；x86 / HF Spaces pending。此 POC 已演進為現行 VPS Docker runtime。
 - `/api/live-token` 新增 optional `profile` query 參數（`english` / `cantonese` / `cantonese-english` / `auto`）：後端 `GeminiAdapter._build_transcription_instruction()` 依 profile 組出對應轉錄 system instruction 並鎖入 token。轉錄語言指令（如「Never output Japanese kana」防日文誤判、保留 English 技術詞）由前端搬到後端集中管理；未知 / 缺省 profile 一律 fallback 到通用逐字轉錄指令。前端取 token 時依語言模式帶上 `?profile=`。
 - SenseVoice STT 可重現部署工具鏈（開源 / redeploy 前提）：`sensevoice/setup.sh` 一鍵就地建 venv + 裝依賴 + 取模型 + sha256 把關；`sensevoice/fetch_models.py` 由 ModelScope 官方 `iic/*`（pinned revision）下載 streaming ONNX 權重並 copy 入 package；`sensevoice/models.sha256`（7 檔）做完整性 manifest；`sensevoice/sensevoice-api.service.template`（`__INSTALL_DIR__` / `__RUN_USER__` 佔位符）做 infra-as-code。`requirements.txt` 修正為真正可安裝：`sense-voice-streaming-asr` 改用 git+commit pin（非 PyPI，會 404）、補回 `torch` / `torchaudio` CPU wheel。`DEPLOY.md` §2/§3/§6 重寫對齊新流程。
 - GitHub Pages frontend deploy workflow now also triggers on `uiux` branch pushes.

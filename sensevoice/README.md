@@ -1,12 +1,12 @@
 # SenseVoice STT Service — 開發者 & Operator 指引
 
 > 廣東話語音轉文字，基於 FunAudioLLM SenseVoiceSmall + `sense-voice-streaming-asr` streaming wrapper。
-> 跑喺 VPS ARM64 CPU，**host systemd（唔係 Docker）**，經 Cloudflare Tunnel 對外。
+> 跑喺 VPS ARM64 CPU 的 Docker Compose service，經 Cloudflare Tunnel 對外；host systemd unit 只保留作 rollback。
 >
 > - **Public**: `https://<sensevoice-domain>`（Cloudflare Tunnel）
-> - **Internal**: `http://<vps>:8082`
-> - **Service**: `sensevoice-api.service`（systemd）
-> - **Repo path**: `sensevoice/`（此目錄，venv 就地建）
+> - **Host mapping**: `8082 → container 7860`
+> - **Service**: `docker compose --profile sensevoice-local up -d sensevoice`
+> - **Repo path**: `sensevoice/`（此目錄）
 >
 > 詳細部署步驟見 [DEPLOY.md](DEPLOY.md)。
 
@@ -26,15 +26,15 @@
 
 ## 架構定位
 
-SenseVoice 係 AITyping 三大 service 之一，**唯一跑喺 host systemd（唔入 Docker）**：
+SenseVoice 係 AITyping 三大 service 之一，現行跑喺 VPS Docker Compose：
 
 | Service | 技術 | 部署 |
 |---|---|---|
 | frontend | Vite PWA | GitHub Pages |
 | backend | FastAPI（Gemini adapter） | VPS Docker |
-| **sensevoice** | **Flask + WS（此目錄）** | **VPS host systemd** |
+| **sensevoice** | **Flask + WS（此目錄）** | **VPS Docker Compose（8082 → 7860）** |
 
-前端經 `frontend/src/live/sensevoice-ws-client.ts` 打 `wss://.../ws/transcribe-v2`。
+前端先由 backend mint v2 token，再連 `wss://.../ws/transcribe-v2?token=...`。host systemd unit 不與 container 同時運行，只作 rollback。
 
 ---
 
@@ -80,7 +80,7 @@ SENSEVOICE_WS_TOKEN_SECRET=<與 backend 共用的同一個 secret>
 
 > 後端 minter（`backend/app/security/sensevoice_token.py`）與此處 validator（`sensevoice/sensevoice_token.py`）**兩個 Docker context 不互相 import**，靠固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試都 assert）保持 wire-compatible。缺 secret → 此端 fail closed，直接拒連。
 
-**⚠️ 已知邊界：** token gate 只保護 `/ws/transcribe-v2`。下方 legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` **未** 加 token gate，故單靠此 token **不足以** 安全公開整個 HF Space——公開前必須另行處理或關閉 legacy endpoint。
+**⚠️ 已接受邊界（Ben，2026-07-11）：** token gate 只保護 `/ws/transcribe-v2`。legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` 未 gate，token endpoint 也無 user auth / rate limit。此風險在單人 HF migration scope 內接受；如擴大公開使用、出現 abuse / 成本或加入多人帳戶，必須先重新設計 access policy、rate limit 及 legacy endpoint。
 
 ### 音訊格式（必須）
 
@@ -207,27 +207,23 @@ PYTHONPATH=. ./venv/bin/python -m unittest tests.test_ws_v2 -v
 
 ---
 
-## 本地容器 POC（實驗性）
-
-> ⚠️ **現行 production 路徑仍是 host systemd `sensevoice-api.service`（port 8082）。**
-> 容器 POC 係獨立實驗，不改動 / 不取代 systemd 服務。
+## VPS Docker runtime
 
 ```bash
-# 在 repo 根目錄執行（build context = ./sensevoice）
-docker compose --profile sensevoice-local build sensevoice
-docker compose --profile sensevoice-local up -d sensevoice
+# repo 根目錄；.env 必須有 shared SENSEVOICE_WS_TOKEN_SECRET
+SENSEVOICE_HOST_PORT=8082 docker compose --profile sensevoice-local up -d --build sensevoice
+curl http://localhost:8082/ping   # {"status":"ok","model_loaded":true}
 
-# 健康檢查
-curl http://localhost:7860/ping   # {"status":"ok","model_loaded":true}
-
-# 停止並清理
-docker compose --profile sensevoice-local down
+# rollback：先釋放 8082，再重啟保留的 systemd unit
+docker compose --profile sensevoice-local stop sensevoice
+sudo systemctl start sensevoice-api.service
 ```
 
-- `docker compose up`（無 profile）**不會**啟動容器 POC，現有服務不受影響。
-- 目前只驗證 ARM64 本地 build；x86 / HF Spaces 驗證 pending。
+- `docker compose up`（無 profile）不會啟動 SenseVoice。
+- VPS ARM64 build + backend-minted token → v2 WS handshake + Ben iPhone mixed-mode 已驗收。
+- x86 / HF Spaces 仍 pending；HF migration plan 見 root `STATUS.md`。
 - 詳見 `sensevoice/Dockerfile` + `docker-compose.yml` `sensevoice-local` profile。
 
 ---
 
-*最後更新：2026-07-10*
+*最後更新：2026-07-11*

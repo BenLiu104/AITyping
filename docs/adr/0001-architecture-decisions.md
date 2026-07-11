@@ -52,4 +52,12 @@
 - **選擇：** SenseVoice `/ws/transcribe-v2` 改為 token-gated。後端 `POST /api/sensevoice-token` 用共用 `SENSEVOICE_WS_TOKEN_SECRET` 簽發緊湊、URL-safe、HMAC-SHA256 簽名的短效 token（payload：`v` / `aud=sensevoice-ws-v2` / `exp` / 隨機 `nonce`；canonical JSON + unpadded base64url；驗證用 `hmac.compare_digest`）。前端先取 token，再把 URL-encoded token 以 query parameter 接到 WS URL。SenseVoice 在 log「connection opened」/ 建 bridge / 載模型前先驗證。
 - **理由：** 為把 SenseVoice 移到 public HF CPU Space 做準備——公開端點必須先有存取控制，否則任何人可白嫖 CPU 推理。瀏覽器無法為 WebSocket 設自訂 header，故 token 只能走 query parameter。選 stdlib HMAC 而非 JWT：payload 極簡、無需額外依賴、兩端各自實作即可，攻擊面更小。
 - **防協定漂移：** 後端 minter 與 SenseVoice validator 分屬兩個 Docker context、runtime 不互相 import；靠 source-controlled 固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試套件都 assert）鎖住 wire format。
-- **取捨 / 已知邊界：** 此決策只保護 v2 WS。legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` 未 gate，故單靠此 token **不構成** 完整的 public Space 安全釋出；公開前必須另行處理或關閉 legacy endpoint。TTL 有界（預設 60s、5–300）以限縮被竊 token 的可用窗口。
+- **取捨 / 已知邊界：** 此決策只保護 v2 WS。legacy REST（`/transcribe`、`/transcribe_batch`）與 v1 `/ws/transcribe` 未 gate；token endpoint 也沒有 user identity / rate limit。TTL 有界（預設 60s、5–300）以限縮被竊 token 的可用窗口。
+
+## 決策 9：接受 v2 token 作為單人 HF migration 的安全邊界
+
+> 狀態：Accepted · 日期：2026-07-11 · Ben 明確確認
+
+- **選擇：** 在現時單人 AITyping 使用範圍，v2 HMAC token 足以作為遷移至 public HF CPU Docker Space 的安全 gate；不為這次 migration 額外加入 user auth、rate limiting 或 legacy endpoint 收斂。
+- **理由：** 目標係移走 VPS 常駐 STT model RAM，並非將服務擴為多人公開 API。v2 path 已 fail closed、shared secret 不落 frontend、短 TTL、payload 防篡改，符合當前 scope。
+- **取捨 / 重新評估條件：** CORS 不等於 authentication；有人可直接請求 token endpoint，而 legacy endpoints 仍未 gate。若公開招攬使用者、出現 abuse / 成本、或加入多人帳戶，必須先重新開啟 rate limit、identity / access policy 和 legacy endpoint 方案的設計。

@@ -5,14 +5,14 @@
 
 ## 1. Current Focus
 
-- **Phase**: Phase 2 — feat/sensevoice-container-poc：本地 ARM64 容器 POC 完成並 commit（6103a1d）
-- **Branch**: `feat/sensevoice-container-poc`
+- **Phase**: Phase 2 — SenseVoice 已由 host systemd migration 到 VPS Docker；下一步係 HF CPU Docker Space migration planning。
+- **Branch**: `uiux`（remote `uiux` 包含 container / v2 token / runtime migration commits；`main` 尚未追上。）
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
-- **SenseVoice API**: `https://<sensevoice-domain>` (VPS host systemd, Cloudflare Tunnel, port 8082)；**執行路徑已遷移到 repo checkout `sensevoice/`（可重現部署）**
+- **SenseVoice API**: `https://<sensevoice-domain>`（VPS Docker Compose `sensevoice` service：host 8082 → container 7860，Cloudflare Tunnel）；舊 `sensevoice-api.service` 仍保留作 rollback，但目前 `inactive`。
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
-- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy
-- **Current work**: **SenseVoice v2 WS 短效簽名 token（Ben 核准的安全設計）** —— 後端新增 `POST /api/sensevoice-token`（`{token, expiresAt}`、`Cache-Control: no-store`、缺 secret fail closed 503），HMAC-SHA256 stdlib token（`v`/`aud=sensevoice-ws-v2`/`exp`/`nonce`，canonical JSON + base64url，`compare_digest`）。後端 minter 與 SenseVoice validator 兩個 Docker context 不互 import，靠固定向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試都 assert）防漂移。SenseVoice `/ws/transcribe-v2` 在 log「connection opened」/ 建 bridge / 載模型前先驗證 query token；前端 `SenseVoiceWsClient` 先 POST 取 token 再以 URL-encoded query param 接上、失敗不開 socket、token/URL 不 log。**TDD 全綠：backend 40 pytest、sensevoice 28 unittest、frontend 78 vitest；FE typecheck/lint/build、backend ruff 全綠。⚠️ 只保護 v2 WS，legacy endpoint 未 gate，故此 token 尚不足以安全公開整個 HF Space。此 code 僅 feature branch，未部署（x86/HF/deploy pending）。**
+- **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy。
+- **Current work**: 規劃 Hugging Face CPU Docker Space migration。v2 WS token 已 live：`POST /api/sensevoice-token` 簽發約 60 秒 HMAC token，SenseVoice 在建立 bridge / 載模型前驗證。Ben 已接受目前單人 AITyping scope 的安全邊界：v2 token 可作 HF migration gate；legacy endpoint 未 gate、token endpoint 無 user auth / rate limit，若擴大公開使用或流量，必須重新評估。
 
 ## 2. Current Product Behavior
 
@@ -28,7 +28,7 @@
   - Cleanup mode can now be changed after cleanup; frontend reuses saved final transcript and re-runs the appropriate cleanup endpoint. Re-cleanup 只替換 cleaned result，不修改 raw transcript、不重錄、不重跑 STT；失敗時保留舊 cleaned result 並顯示 non-blocking error。
 - **Language routing（本地工作樹）**：
   - `en` / `zh-Hant` → Gemini Live WebSocket API（先呼叫 `<backend-domain>/api/live-token` 取得 backend-created short-lived ephemeral token；若 token creation 失敗，frontend 顯示安全錯誤並不連線）
-  - `yue` / `mixed` → SenseVoice WebSocket incremental stream（`wss://<sensevoice-domain>/ws/transcribe-v2`）
+  - `yue` / `mixed` → SenseVoice WebSocket incremental stream：先 `POST <backend-domain>/api/sensevoice-token` 取約 60 秒 HMAC token，才連 `wss://<sensevoice-domain>/ws/transcribe-v2?token=...`；v2 驗簽失敗不建立 STT bridge。
 - SenseVoice v2 模式：前端持續送 raw PCM Int16；backend `StreamingTranscriptionBridge` 用 incremental SenseVoice runtime 輸出 `partial_result` / `final_result` / `end_ack`，並在 server 端做 OpenCC 簡轉繁。**預設不保留 raw PCM，亦不寫 WAV／JSONL／transcript summary 到 disk**；只有 operator 明確設定 `SENSEVOICE_DEBUG_TRACE=1` 的診斷 process，或測試注入 trace factory，才啟用 trace。
 - `mixed` 現在送到 SenseVoice `LANG:auto`；`yue` 送 `LANG:yue`；前端 `SenseVoiceWsClient` 只累積 final transcript，避免 partial duplication。
 - Live transcript panel 現在顯示 `final + interim`，避免第一句 finalized 後把第二句 partial 完全遮住。
@@ -43,16 +43,27 @@
 | Area | Status | Notes |
 |---|---:|---|
 | Phase 1 MVP | ✅ Done | iPhone / Home Screen PWA 基本流程跑通 |
-| Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；`/api/transcribe` proxy 已移除 |
-| Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoiceClient（直連 REST）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
-| SenseVoice ASR | ✅ Done | systemd `sensevoice-api` port 8082；**執行路徑＝repo `sensevoice/`（venv + models 由 `setup.sh` 就地重建，可重現）**；Cloudflare Tunnel 直通；CORS open |
+| Backend | ✅ Done | FastAPI：`/api/live-token`、`/api/sensevoice-token`、`/api/cleanup`、`/api/smart-cleanup`、`/api/debug-event`；SenseVoice token secret 只由 backend / container runtime 持有 |
+| Frontend | ✅ Done | Vite PWA、AudioWorklet、LiveClient（Gemini）、SenseVoice v2 WS client（mint token 後連線）、tap-to-toggle Mic、Smart Cleanup mode 分支 |
+| SenseVoice ASR | ✅ Done | VPS Docker Compose `sensevoice`（host 8082 → container 7860）；models baked into image；host systemd unit 保留但 inactive 作 rollback；Cloudflare Tunnel 直通 |
 | Gemini Live | ✅ Done | `v1alpha` constrained WS + backend ephemeral token、`AUDIO` modality、`inputAudioTranscription`、Blob message decode；`/api/live-token` fail closed，不再回傳 raw API key。★ 完整 setup（含依 `?profile=` 的轉錄語言指令）鎖入 token `live_connect_constraints.config`，前端只送空 `{setup:{}}`（修 constrained endpoint 拒 client setup 的 1011 regression，route 端到端實測 setupComplete）|
 | Smart Cleanup (semantic mode) MVP1 | ✅ Done | `/api/smart-cleanup` + adapter `smart_cleanup()`（JSON schema 約束 + regex 搶救 fallback）+ 前端 mode 分支；real API 真機驗收通過，已 merge 入 `main` |
-| Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS host systemd + CF Tunnel |
+| Deployment | ✅ Done | Frontend: GitHub Actions → GitHub Pages；Backend: VPS Docker + CF Tunnel；SenseVoice: VPS Docker Compose + existing host Cloudflare Tunnel（systemd rollback retained） |
 | Phase 2 UX polish | ⏳ In Progress | Smart Cleanup MVP1 完成並 merge；「柔和生活風」主畫面 UI 改版本地完成（layout-only，tests/typecheck/build 全綠，未 deploy / 未真機驗收）；其餘 Phase 2 gates（history 真實功能、debug counters 顯示規則等）待續 |
 | Phase 3 stability/security | ⏭️ Later | rate limit、auth/access policy、reconnect、error UX |
 
 ## 4. Current Verification Snapshot
+
+```text
+2026-07-11 01:41 PDT — VPS Docker migration + v2 token 真機驗收
+- `uiux` source: container POC, HMAC v2 token, port-config migration and access-log redaction fixes pushed through `71211e5`.
+- Runtime: `aityping-backend` healthy; `aityping-sensevoice-poc` running with host `8082 → 7860`; `sensevoice-api.service` is inactive but retained as rollback.
+- Public checks: backend token endpoint returns 200 with `Cache-Control: no-store` and GitHub Pages CORS; SenseVoice `/ping` returns `model_loaded:true`.
+- End-to-end: backend-minted token → v2 WS `LANG:yue` + valid PCM + `END` → `end_ack`; container access log redacts token query strings.
+- Ben iPhone acceptance: after disabling NordVPN / Threat Protection DNS filtering, SenseVoice mixed-mode flow succeeded. VPN can block `*.bochibb.qzz.io` locally before backend receives a request.
+- Scope decision: Ben accepts current v2-token boundary for the single-user HF migration; legacy endpoints and no user/rate-limit policy are documented accepted limits, to revisit if scope expands.
+- Next: plan then execute isolated HF CPU Docker Space spike; no VPS cutover until public Space is proven.
+```
 
 ```text
 2026-07-10 16:55 PDT — SenseVoice 容器 POC 修復（feat/sensevoice-container-poc，Attempt-1 review 缺陷修復）
@@ -279,22 +290,27 @@
 
 ## 6. Next Steps
 
-1. **UI 改版（✅ 完成並 merge 入 `main`）**
+1. **HF CPU Docker Space migration（下一步，已寫 plan）**
+   - Plan：`.hermes/plans/2026-07-11_014108-hf-cpu-space-migration.md`
+   - 順序：x86/Docker Hub immutable digest → isolated public HF Space → token WS protocol/cold-start/resource gates → frontend URL cutover → Ben 真機驗收 → 才停止 VPS Compose STT。
+   - HF CPU Basic 現有公開規格為 2 vCPU / 16GB RAM / 50GB ephemeral disk；x86 build、Space WS proxy、cold start 都仍需實測。
+
+2. **UI 改版（✅ 完成並 merge 入 `main`）**
    - 「柔和生活風」主畫面已 deploy、Ben 確認「效果都 ok」，`uixi` → `main` merge 完成；plan 見 `UI_change.md`
    - cleanup mode re-run UX 已 merge 並真機驗收通過（轉 mode 可流暢改變 cleanup 結果）
    - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
-2. **加 app icon（✅ 完成，`uiux` branch，未真機驗收）**
+3. **加 app icon（✅ 完成，`uiux` branch，未真機驗收）**
    - 由單張 1254² 原圖 resize 出全套：`pwa-64/192/512`、`maskable-512`（80% safe zone）、`apple-touch-icon-180`、`favicon.ico/png`，全部米白底配「柔和生活風」
    - 修正 `vite.config.ts` manifest icon 引用 bug（typo `512x1512` + 唔存在的 `mask-icon.svg`）；`index.html` 加 `apple-touch-icon` link
    - build precache 6 → 13 entries，typecheck / test 48 / build 全綠；**未 iOS Home Screen 真機裝過**
 
-3. **Phase 2 收尾觀察**
+4. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt
    - SenseVoice v2 預設不落 disk trace；如 operator 明確暫時啟用 `SENSEVOICE_DEBUG_TRACE=1` 做診斷，才按其 trace 輸出排查漏句／stop-finalize；不要檢查或依賴既有 raw-audio artifacts
    - 舊 `/ws/transcribe` route 保留作回退
 
-4. **Phase 3 準備（⏭️ 之後）**
+5. **Phase 3 準備（⏭️ 之後）**
    - Rate limiting
    - Token endpoint access policy / auth
    - Better offline / mic denied / API failure UX
