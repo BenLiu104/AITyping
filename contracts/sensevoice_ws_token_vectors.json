@@ -1,0 +1,17 @@
+{
+  "_comment": "Shared interoperability vector for the SenseVoice WS HMAC token (audience sensevoice-ws-v2). Backend (backend/app/security/sensevoice_token.py) and SenseVoice (sensevoice/sensevoice_token.py) each implement the SAME compact HMAC-SHA256 scheme but MUST NOT import each other (separate Docker contexts). Both test suites assert against this file to prevent protocol drift. Secret and token here are TEST-ONLY; never a real secret.",
+  "algorithm": "token = base64url(canonical_json_payload) + '.' + base64url(HMAC_SHA256(secret, signing_input)); canonical_json = json.dumps(payload, sort_keys=True, separators=(',',':')); base64url is unpadded.",
+  "secret": "test-shared-secret-vector-do-not-use-in-prod",
+  "audience": "sensevoice-ws-v2",
+  "version": 2,
+  "payload": {
+    "v": 2,
+    "aud": "sensevoice-ws-v2",
+    "exp": 2000000000,
+    "nonce": "AAAABBBBCCCCDDDD"
+  },
+  "canonical_json": "{\"aud\":\"sensevoice-ws-v2\",\"exp\":2000000000,\"nonce\":\"AAAABBBBCCCCDDDD\",\"v\":2}",
+  "signing_input": "eyJhdWQiOiJzZW5zZXZvaWNlLXdzLXYyIiwiZXhwIjoyMDAwMDAwMDAwLCJub25jZSI6IkFBQUFCQkJCQ0NDQ0REREQiLCJ2IjoyfQ",
+  "signature": "fKDPS8e8ezhrj7LYzvQfPYh38Ue57cE_Ncr5ZCyJ2d8",
+  "token": "eyJhdWQiOiJzZW5zZXZvaWNlLXdzLXYyIiwiZXhwIjoyMDAwMDAwMDAwLCJub25jZSI6IkFBQUFCQkJCQ0NDQ0REREQiLCJ2IjoyfQ.fKDPS8e8ezhrj7LYzvQfPYh38Ue57cE_Ncr5ZCyJ2d8"
+}
