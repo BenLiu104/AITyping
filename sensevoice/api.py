@@ -59,7 +59,7 @@ class RedactingRequestHandler(WSGIRequestHandler):
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
         request_line = f"{self.command} {redact_request_target(self.path)} {self.request_version}"
-        self.log('"%s" %s %s', request_line, code, size)
+        self.log("info", '"%s" %s %s', request_line, code, size)
 
 
 TRACE_ROOT = Path("/tmp/sv-debug")
