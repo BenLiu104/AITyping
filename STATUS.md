@@ -6,7 +6,7 @@
 ## 1. Current Focus
 
 - **Phase**: Phase 2 — SenseVoice 已由 host systemd migration 到 VPS Docker；下一步係 HF CPU Docker Space migration planning。
-- **Branch**: `uiux`（remote `uiux` 包含 container / v2 token / runtime migration commits；`main` 尚未追上。）
+- **Branch**: `main` 已於 2026-07-14 merge `uiux`（merge commit `906313792d89`）；v2-only SenseVoice / container / token runtime commits 已納入 `main`。
 - **Frontend URL**: `https://benliu104.github.io/AITyping/` (GitHub Pages)
 - **Backend API**: `https://<backend-domain>` (VPS Docker, Cloudflare Tunnel)
 - **SenseVoice API**: `https://<sensevoice-domain>`（VPS Docker Compose `sensevoice` service：host 8082 → container 7860，Cloudflare Tunnel）；舊 `sensevoice-api.service` 仍保留作 rollback，但目前 `inactive`。
