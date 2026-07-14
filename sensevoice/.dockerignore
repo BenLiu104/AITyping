@@ -29,14 +29,14 @@ htmlcov/
 sv-debug/
 
 # Loose model blobs / caches — must NEVER enter the build context.
-# Models are fetched/preloaded INSIDE the build (fetch_models.py + FunASR
-# preload) and baked into image layers; any stray weights in the context would
+# Models are fetched INSIDE the build and baked into image layers; any stray
+# weights in the context would
 # bloat the upload and could shadow the reproducible in-build download.
-# HuggingFace / FunASR / ModelScope caches:
+# HuggingFace / ModelScope caches:
 hub/
 .cache/
 huggingface/
-funasr/
+
 modelscope/
 models/
 # Raw weight / checkpoint blobs by extension:
@@ -62,8 +62,7 @@ models/
 # because Docker removes it from the context automatically; explicit exclusion
 # is harmless but unnecessary.
 
-# Do NOT exclude: api.py, fetch_models.py, models.sha256, funasr_models.sha256,
-# verify_funasr_cache.py, model_pins.py, requirements.txt, tests/, Dockerfile,
+# Do NOT exclude: api.py, fetch_models.py, models.sha256, requirements.txt, tests/, Dockerfile,
 # README.md, DEPLOY.md
 # (These are source/manifests, not blobs — the *.pt / *.onnx / *.mvn globs above
-#  match weight files only, never model_pins.py or models.sha256.)
+#  match weight files only, never models.sha256.)

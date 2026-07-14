@@ -17,7 +17,7 @@ cd "$SCRIPT_DIR"
 
 VENV_DIR="$SCRIPT_DIR/venv"
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
-TORCH_CPU_INDEX="https://download.pytorch.org/whl/cpu"
+
 
 if [[ "${1:-}" == "--recreate" ]]; then
   echo "==> Removing existing venv ($VENV_DIR)"
@@ -40,14 +40,13 @@ VPY="$VENV_DIR/bin/python"
 echo "==> Upgrading pip"
 "$VPY" -m pip install --upgrade pip >/dev/null
 
-echo "==> Installing requirements (torch CPU wheels via extra index)"
-"$VPY" -m pip install -r "$SCRIPT_DIR/requirements.txt" --extra-index-url "$TORCH_CPU_INDEX"
+echo "==> Installing requirements"
+"$VPY" -m pip install -r "$SCRIPT_DIR/requirements.txt"
 
 echo "==> Verifying key imports"
 "$VPY" - <<'PYEOF'
 import importlib, sys
-mods = ["flask", "flask_sock", "flask_cors", "torch", "funasr",
-        "librosa", "soundfile", "numpy", "opencc",
+mods = ["flask", "flask_sock", "flask_cors", "soundfile", "numpy", "opencc",
         "sense_voice_streaming_asr"]
 missing = []
 for m in mods:
@@ -86,5 +85,3 @@ echo "==> Done. Run the API with:"
 echo "    $VENV_DIR/bin/python $SCRIPT_DIR/api.py --preload --port 8082"
 echo ""
 echo "    Note: streaming ONNX models are vendored into the venv by this script."
-echo "    On first run, funasr also downloads its own FSMN-VAD + SenseVoiceSmall"
-echo "    (.pt) into ~/.cache/huggingface for the file-transcription path (needs network)."

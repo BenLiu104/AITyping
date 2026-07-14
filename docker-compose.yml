@@ -41,8 +41,9 @@ services:
       dockerfile: Dockerfile
     container_name: aityping-sensevoice-poc
     ports:
-      - "7860:7860"
+      - "${SENSEVOICE_HOST_PORT:-7860}:7860"
     environment:
       - PYTHONUNBUFFERED=1
+      - SENSEVOICE_WS_TOKEN_SECRET=${SENSEVOICE_WS_TOKEN_SECRET:?set_in_dotenv}
     # No restart policy — POC only, not production.
     # No depends_on — SenseVoice is independent of backend/frontend.

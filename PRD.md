@@ -134,7 +134,7 @@ iPhone Safari (PWA)
 
 ### 6.4 `POST /api/sensevoice-token`（SenseVoice v2 WS 短效簽名 token）
 
-> 狀態：已實作、Ben 已核准此 API / 安全設計。**目前僅在 feature branch，未部署**；生產 SenseVoice 仍是 host systemd（port 8082），此 token 尚未在生產啟用。
+> 狀態：已實作、已部署於 VPS Docker、Ben 已完成真機驗收並核准此 API / 安全設計；HF CPU Docker Space migration 待下一步實作。
 
 **用途：** 瀏覽器無法為 WebSocket 加自訂 header，故 SenseVoice v2 WS（`/ws/transcribe-v2`）改為 token-gated：前端先 `POST /api/sensevoice-token` 取得後端簽發的短效 token，再把 URL-encoded token 以 **query parameter**（`?token=...`）接到 WS URL。
 
@@ -155,7 +155,7 @@ iPhone Safari (PWA)
 **SenseVoice 驗證：** v2 WS 在 **log「connection opened」、建立 `StreamingTranscriptionBridge`、載入任何模型之前** 先驗證 query token。無效 / 過期 / 錯 audience / secret 缺失一律 generic error + close（不回顯 token）。
 
 - **互通契約：** 兩端各自實作同一 HMAC 方案，靠 source-controlled 固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試套件都 assert）防止協定漂移。
-- **⚠️ 已知邊界（legacy）：** 此 task 只保護 `/ws/transcribe-v2`。SenseVoice 的 legacy endpoint（`/transcribe`、`/transcribe_batch`、`/ws/transcribe`）**未** 加 token gate，故單靠此 token **不構成** 完整的 public HF Space 安全釋出——公開前必須另行處理或關閉 legacy endpoint。
+- **已接受邊界（Ben，2026-07-14）：** `/ws/transcribe-v2` 是唯一 SenseVoice STT 接口；legacy REST（`/transcribe`、`/transcribe_batch`）及 v1 `/ws/transcribe` 已移除，故所有 STT session 都先過短效 HMAC token gate。token endpoint 仍沒有 user auth / rate limit；如擴大公開使用、出現 abuse / 成本或加入多人帳戶，必須先重新設計 access policy 與 rate limit。
 
 > 改合約 = 同步更新這裡 + 前後端 + test。
 
