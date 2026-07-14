@@ -155,7 +155,7 @@ iPhone Safari (PWA)
 **SenseVoice 驗證：** v2 WS 在 **log「connection opened」、建立 `StreamingTranscriptionBridge`、載入任何模型之前** 先驗證 query token。無效 / 過期 / 錯 audience / secret 缺失一律 generic error + close（不回顯 token）。
 
 - **互通契約：** 兩端各自實作同一 HMAC 方案，靠 source-controlled 固定測試向量 `contracts/sensevoice_ws_token_vectors.json`（兩邊測試套件都 assert）防止協定漂移。
-- **⚠️ 已接受邊界（Ben，2026-07-11）：** 此 task 只保護 `/ws/transcribe-v2`。legacy endpoint（`/transcribe`、`/transcribe_batch`、`/ws/transcribe`）未加 token gate，且 token endpoint 沒有 user auth / rate limit。此風險在目前單人 AITyping HF migration scope 內接受；如擴大公開使用、出現 abuse / 成本或加入多人帳戶，必須先重新設計 access policy、rate limit 及 legacy endpoint。
+- **已接受邊界（Ben，2026-07-14）：** `/ws/transcribe-v2` 是唯一 SenseVoice STT 接口；legacy REST（`/transcribe`、`/transcribe_batch`）及 v1 `/ws/transcribe` 已移除，故所有 STT session 都先過短效 HMAC token gate。token endpoint 仍沒有 user auth / rate limit；如擴大公開使用、出現 abuse / 成本或加入多人帳戶，必須先重新設計 access policy 與 rate limit。
 
 > 改合約 = 同步更新這裡 + 前後端 + test。
 

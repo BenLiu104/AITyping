@@ -12,7 +12,7 @@
 - **SenseVoice API**: `https://<sensevoice-domain>`（VPS Docker Compose `sensevoice` service：host 8082 → container 7860，Cloudflare Tunnel）；舊 `sensevoice-api.service` 仍保留作 rollback，但目前 `inactive`。
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy。
-- **Current work**: 規劃 Hugging Face CPU Docker Space migration。v2 WS token 已 live：`POST /api/sensevoice-token` 簽發約 60 秒 HMAC token，SenseVoice 在建立 bridge / 載模型前驗證。Ben 已接受目前單人 AITyping scope 的安全邊界：v2 token 可作 HF migration gate；legacy endpoint 未 gate、token endpoint 無 user auth / rate limit，若擴大公開使用或流量，必須重新評估。
+- **Current work**: Hugging Face CPU Docker Space migration 的 G1 已通過：`uiux` source `35d4a396561485922502ef0bf720b110fc9609ef` 已發布為 x86 `linux/amd64` image `docker.io/ben221/aityping-sensevoice:sha-35d4a396`，immutable index digest `sha256:94b0f4c7909700cf4841e27b2967b987141d023d0a9284851ffc53eae906495c`。**HF migration 現已按 Ben 決定暫停**：保留 Docker Hub immutable artifact，唔建立 Space、唔訂閱 PRO，VPS Compose 與 frontend production traffic 維持不變。2026-07-14 source 已完成 v2-only refactor（legacy REST/v1 WS/FunASR full-model path removed），本地新 ARM64 image build + v2 smoke 已通過；**production container 尚未 redeploy，仍跑舊 image，故 legacy route 暫時仍存在於 production**。v2 WS token 已 live；token endpoint 無 user auth / rate limit，若擴大公開使用或流量，必須重新評估。
 
 ## 2. Current Product Behavior
 
@@ -35,7 +35,7 @@
 - SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
 - SenseVoice WS client 現在把 iPhone AudioWorklet 的極細 PCM frames 聚合成約 100ms / 3200 bytes 才送出，停止時會先 flush 剩餘 audio 再送 `END`，debug row 顯示 `end` / `ack` 用嚟確認 backend finalize handshake。
 - **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `<your-domain>` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
-- 舊 `/ws/transcribe` silence-segmentation route 仍保留，方便回退；但本地新路徑已改用 `/ws/transcribe-v2`。
+- source 已收斂為 `/ws/transcribe-v2` 唯一 STT route；production 尚待一次有意識的 redeploy 才會移除舊 route。
 - **主畫面 UI（`uixi` 本地工作樹，未 deploy）**：改為「柔和生活風」— 暖米白背景、綠色 accent、白色圓角卡片。整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐（native `<select>`，`aria-label` = 整理模式 / 語言模式）；預設整理模式改為 `semantic`（智能整理）。Settings gear 只剩 mock + haptics 兩個 toggle。即時聽寫卡加錄音計時器（`mm:ss`）；智能整理結果卡的複製 / 清除為卡內右上角小 icon。底部：中央綠色 mic 大按鈕（唯一 tap-to-toggle 錄音控制）+ 右側「歷史紀錄」按鈕（點擊只彈「歷史紀錄即將推出」placeholder，無儲存邏輯）。debug 遙測列改為只在 `import.meta.env.DEV` 顯示（`vite build` production bundle 已剝除，Vitest 下仍在故 `end=1 ack=1` regression 續綠）。所有錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 
 ## 3. Area Status
@@ -290,27 +290,32 @@
 
 ## 6. Next Steps
 
-1. **HF CPU Docker Space migration（下一步，已寫 plan）**
-   - Plan：`.hermes/plans/2026-07-11_014108-hf-cpu-space-migration.md`
-   - 順序：x86/Docker Hub immutable digest → isolated public HF Space → token WS protocol/cold-start/resource gates → frontend URL cutover → Ben 真機驗收 → 才停止 VPS Compose STT。
-   - HF CPU Basic 現有公開規格為 2 vCPU / 16GB RAM / 50GB ephemeral disk；x86 build、Space WS proxy、cold start 都仍需實測。
+1. **SenseVoice v2-only rollout（待 Ben 明確確認 deploy）**
+   - source / local ARM64 image `aityping-sensevoice:latest@sha256:12716dfa…` 已 build；32 SenseVoice tests、isolated v2 token → PCM → `END` → `end_ack` smoke、legacy routes `404` 均通過。
+   - production 仍跑舊 image `569c8a63d8c8`；下一步若 deploy，先以 Compose recreate，再驗 `/ping`、backend-minted token → public v2 WS、legacy paths `404`；deploy 後才可視為 legacy route 已由 production 移除。
+   - full FunASR host / Nova caches 已清除；local `sensevoice/venv` 已以 streaming-only requirements 重建。
 
-2. **UI 改版（✅ 完成並 merge 入 `main`）**
+2. **HF CPU Docker Space migration（⏸️ 暫停）**
+   - 已完成 G1：`docker.io/ben221/aityping-sensevoice:sha-35d4a396`，immutable index digest `sha256:94b0f4c7909700cf4841e27b2967b987141d023d0a9284851ffc53eae906495c`。
+   - HF API 已實測：Docker Space（包括 CPU Basic）要求 PRO subscription。Ben 決定暫不訂閱、暫不改 host；保持 VPS Compose canonical。
+   - 日後若重開：重新確認 HF entitlement / host 選擇，再由 G2 isolated public Space 開始；frontend URL cutover 與 VPS STT shutdown 均未開始。
+
+3. **UI 改版（✅ 完成並 merge 入 `main`）**
    - 「柔和生活風」主畫面已 deploy、Ben 確認「效果都 ok」，`uixi` → `main` merge 完成；plan 見 `UI_change.md`
    - cleanup mode re-run UX 已 merge 並真機驗收通過（轉 mode 可流暢改變 cleanup 結果）
    - 未收尾：`歷史紀錄` 目前只是 placeholder（點擊彈「即將推出」），真實 history 功能未實作
 
-3. **加 app icon（✅ 完成，`uiux` branch，未真機驗收）**
+4. **加 app icon（✅ 完成，`uiux` branch，未真機驗收）**
    - 由單張 1254² 原圖 resize 出全套：`pwa-64/192/512`、`maskable-512`（80% safe zone）、`apple-touch-icon-180`、`favicon.ico/png`，全部米白底配「柔和生活風」
    - 修正 `vite.config.ts` manifest icon 引用 bug（typo `512x1512` + 唔存在的 `mask-icon.svg`）；`index.html` 加 `apple-touch-icon` link
    - build precache 6 → 13 entries，typecheck / test 48 / build 全綠；**未 iOS Home Screen 真機裝過**
 
-4. **Phase 2 收尾觀察**
+5. **Phase 2 收尾觀察**
    - Smart Cleanup real API 已驗收通過；若後續發現語義推斷品質問題，回 `PRD.md` §9 review prompt
    - SenseVoice v2 預設不落 disk trace；如 operator 明確暫時啟用 `SENSEVOICE_DEBUG_TRACE=1` 做診斷，才按其 trace 輸出排查漏句／stop-finalize；不要檢查或依賴既有 raw-audio artifacts
-   - 舊 `/ws/transcribe` route 保留作回退
+   - legacy `/ws/transcribe` 已由 source 移除；production 只有完成 v2-only rollout 後先會失去此舊 route，唔再將它當作回退方案。
 
-5. **Phase 3 準備（⏭️ 之後）**
+6. **Phase 3 準備（⏭️ 之後）**
    - Rate limiting
    - Token endpoint access policy / auth
    - Better offline / mic denied / API failure UX

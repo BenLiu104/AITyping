@@ -39,7 +39,7 @@ cd <INSTALL_DIR>          # 你 clone 出嚟嘅 sensevoice/
 
 `setup.sh` 做咗乜：
 1. 喺 `sensevoice/venv` **就地**建 venv（venv 不可搬移，見 §6）
-2. `pip install -r requirements.txt`（torch CPU wheel 經 extra-index）
+2. `pip install -r requirements.txt`
 3. 核對 `models.sha256`；若模型缺失／係指標檔，跑 `fetch_models.py`
    由 **ModelScope 官方 `iic/*`**（pinned revision）下載真 ONNX 權重，
    copy 入 `sense_voice_streaming_asr/models/`
@@ -60,9 +60,6 @@ cd <INSTALL_DIR>          # 你 clone 出嚟嘅 sensevoice/
 
 正確性由 `models.sha256`（7 個檔）保證，唔係靠信下載。
 手動 fetch：`./venv/bin/python fetch_models.py`。
-
-> 註：funasr 另有自己嘅 FSMN-VAD + SenseVoiceSmall `.pt`（file-transcription 路徑用），
-> 首次 run 會自動落 `~/.cache/huggingface`，與上述 streaming ONNX 分開。
 
 ## 3. systemd unit
 
@@ -109,14 +106,11 @@ WantedBy=multi-user.target
 | Method | Path | 用途 |
 |---|---|---|
 | GET  | `/ping` | 健康檢查 |
-| POST | `/transcribe` | 單檔轉錄 |
-| POST | `/transcribe_batch` | 批量 |
-| WS   | `/ws/transcribe` | streaming v1（保留回退，**未 token-gate**） |
-| WS   | `/ws/transcribe-v2` | ★ streaming v2（前端現用，**token-gated**） |
+| WS   | `/ws/transcribe-v2` | ★ 唯一 streaming STT 接口（**token-gated**） |
 
 > **v2 授權：** `/ws/transcribe-v2` 要求後端簽發的短效 HMAC token（見 README「授權」節）。
 > 部署時必須設 `SENSEVOICE_WS_TOKEN_SECRET`（與 AITyping backend 共用同一 secret）；缺 secret 即 fail closed 拒連。
-> **⚠️ 公開前提：** token gate 只保護 v2 WS；legacy `/transcribe`、`/transcribe_batch`、`/ws/transcribe` 未 gate，故單靠此 token **不足以** 安全公開 HF Space——公開前必須另行處理或關閉 legacy endpoint。
+> **安全邊界：** legacy endpoint 已移除；所有 STT session 都必須先通過 v2 short-lived token。token endpoint 仍無 user auth / rate limit，公開招攬用戶前必須另行處理 access policy 與 rate limit。
 
 ## 5. 測試
 
@@ -124,14 +118,13 @@ WantedBy=multi-user.target
 cd sensevoice
 # WS v2 streaming 單元測試（mock ASR runtime，無需真模型，~0.04s）
 PYTHONPATH=. ./venv/bin/python -m unittest tests.test_ws_v2 -v
-# 容器 config 契約靜態測試（Dockerfile cache 分層 / compose profile / model pin）
+# 容器 config 契約靜態測試（Dockerfile cache 分層 / compose profile / streaming model integrity）
 PYTHONPATH=. ./venv/bin/python -m unittest tests.test_container_config -v
 ```
 
 > `test_ws_v2` 用 `FakeProcessor` mock 咗 ASR runtime，唔需要真模型。
 > `test_container_config` 純 stdlib 靜態解析 Dockerfile / docker-compose.yml /
-> .dockerignore / model_pins.py，守住 build-cache 分層、profile gating、model
-> revision pin 契約，改壞即 fail。
+> .dockerignore，守住 build-cache 分層、profile gating、streaming model integrity 契約，改壞即 fail。
 
 ## 6. 容器化部署（現行 VPS runtime；HF Spaces 下一階段）
 
@@ -143,7 +136,7 @@ PYTHONPATH=. ./venv/bin/python -m unittest tests.test_container_config -v
 |---|---|
 | VPS Docker Compose + CF Tunnel | ✅ 已部署；Ben iPhone mixed-mode 驗收通過 |
 | host systemd + CF Tunnel | 🟡 rollback only；不可與 container 同時 bind 8082 |
-| x86 / HF Docker Spaces | ⏳ 下一階段規劃；尚未建立 Space / publish image / cutover |
+| x86 / HF Docker Spaces | ⏸️ x86 image 已發布；HF Docker Space 要求 PRO，Ben 暫停 migration |
 | Backend short-lived WS token | ✅ 已部署；shared secret 只注入 backend + SenseVoice container |
 
 ### VPS container 操作
@@ -159,23 +152,18 @@ sudo systemctl start sensevoice-api.service
 ```
 
 - `docker compose up`（無 profile）**不會**起 SenseVoice。
-- image build 時把 streaming ONNX + FunASR `.pt` 模型全數 bake in，無需 runtime cache volume。
+- image build 時只把 streaming ONNX STT + VAD 模型 bake in，無需 runtime cache volume。
 - `SENSEVOICE_WS_TOKEN_SECRET` 必須只由 Compose environment injection 傳入；不可使用 `env_file` 將 backend 的其他 secrets 傳進 STT container。
 
 ### 模型 pin 與完整性（容器）
 
-容器把兩類模型 bake 入 image，各有獨立 pin + 完整性 manifest：
+容器把 streaming ONNX 模型 bake 入 image，pin 與完整性 manifest 如下：
 
 | 類別 | 來源 | pin 定義處 | 完整性 manifest | build 內驗證 |
 |---|---|---|---|---|
 | streaming ONNX | ModelScope `iic/*` | `fetch_models.py` MODELS[].revision | `models.sha256`（package 目錄核對） | `sha256sum -c models.sha256` |
-| FunASR `.pt`（SenseVoiceSmall + FSMN-VAD） | HF hub | `model_pins.py`（api.py runtime 亦 import 同一份） | `funasr_models.sha256`（baked HF cache 核對） | `verify_funasr_cache.py` |
 
-> `model_pins.py` 係 runtime（`api.py`）同 build（Dockerfile preload）**共用嘅單一 pin 來源**，
-> 確保 host systemd 同容器載入完全相同嘅 artifact，manifest 不會與實際推理 drift。
-> Dockerfile 已重排 layer：只有 requirements / fetch_models / manifests / model_pins
-> 喺昂貴 model layer 前 COPY；`api.py` / `tests/` 喺所有 fetch/preload/verify layer
-> **之後**先 COPY，改 source 唔會 bust model cache。
+> Dockerfile 只將 requirements / `fetch_models.py` / `models.sha256` 放喺昂貴 model layer 前 COPY；`api.py` / `tests/` 喺 ONNX fetch + verify **之後**先 COPY，改 source 唔會重下載模型。
 
 ### HF 遷移決策（已確認，尚未執行）
 
@@ -185,8 +173,7 @@ sudo systemctl start sensevoice-api.service
 
 **venv 不可搬移。** venv `bin/` 內嘅 script（`pip`、`ruff` 等）shebang 寫死絕對路徑
 （`#!/…/venv/bin/python3.11`）。`mv`／`cp -r` venv 去新路徑後，呢啲 shebang 仍指舊路徑，
-一 exec 就 `FileNotFoundError`。funasr 載模型時會 self-`pip install` model requirements，
-撞正就 crash loop（`status=6/ABRT`）。**正解：喺新路徑重跑 `./setup.sh` 重建。**
+一 exec 就 `FileNotFoundError`，可能造成 crash loop。**正解：喺新路徑重跑 `./setup.sh` 重建。**
 
 **pip-from-git 唔會落 submodule / LFS 模型。** 見 §2「模型下載」——用 `fetch_models.py`
 由 ModelScope 攞真權重，`models.sha256` 把關。
