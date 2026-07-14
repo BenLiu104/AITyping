@@ -12,7 +12,7 @@
 - **SenseVoice API**: `https://<sensevoice-domain>`（VPS Docker Compose `sensevoice` service：host 8082 → container 7860，Cloudflare Tunnel）；舊 `sensevoice-api.service` 仍保留作 rollback，但目前 `inactive`。
 - **Current deployed frontend build**: 「柔和生活風」淺色 UI（暖米白 `#FFF9EF` + 綠 accent）；已 deploy 並經 Ben 確認「效果都 ok」。cleanup mode re-run UX 已 merge 並經 Ben 真機驗收通過（轉 mode 可流暢改變 cleanup 結果）。
 - **GitHub Actions**: Auto-deploy frontend on push to `semantic-dev` / `uixi` / `uiux` branches (path: `frontend/**`)；`github-pages` environment deployment-branch-policy 白名單需含對應 branch 才可真正 deploy。
-- **Current work**: Hugging Face CPU Docker Space migration 的 G1 已通過：`uiux` source `35d4a396561485922502ef0bf720b110fc9609ef` 已發布為 x86 `linux/amd64` image `docker.io/ben221/aityping-sensevoice:sha-35d4a396`，immutable index digest `sha256:94b0f4c7909700cf4841e27b2967b987141d023d0a9284851ffc53eae906495c`。**HF migration 現已按 Ben 決定暫停**：保留 Docker Hub immutable artifact，唔建立 Space、唔訂閱 PRO，VPS Compose 與 frontend production traffic 維持不變。2026-07-14 source 已完成 v2-only refactor（legacy REST/v1 WS/FunASR full-model path removed），本地新 ARM64 image build + v2 smoke 已通過；**production container 尚未 redeploy，仍跑舊 image，故 legacy route 暫時仍存在於 production**。v2 WS token 已 live；token endpoint 無 user auth / rate limit，若擴大公開使用或流量，必須重新評估。
+- **Current work**: Hugging Face CPU Docker Space migration 的 G1 已通過：`uiux` source `35d4a396561485922502ef0bf720b110fc9609ef` 已發布為 x86 `linux/amd64` image `docker.io/ben221/aityping-sensevoice:sha-35d4a396`，immutable index digest `sha256:94b0f4c7909700cf4841e27b2967b987141d0230a9284851ffc53eae906495c`。**HF migration 現已按 Ben 決定暫停**：保留 Docker Hub immutable artifact，唔建立 Space、唔訂閱 PRO。2026-07-14 `uiux` commit `56c5678792b8` 已 rollout：Compose 重新 build / recreate backend + SenseVoice；running SenseVoice image `sha256:7c494bec…`、backend `sha256:c8ee96ac…` 均為此 source build。public backend / SenseVoice health 為 200、legacy `/transcribe` 為 404、backend-minted browser-shaped v2 WS 完成 PCM → `end_ack`。GitHub Pages workflow run `29319077203` 亦成功部署此 commit。v2 WS token 已 live；token endpoint 無 user auth / rate limit，若擴大公開使用或流量，必須重新評估。
 
 ## 2. Current Product Behavior
 
@@ -35,7 +35,7 @@
 - SenseVoice stop path 現在在 `waitForCompletion()` 空值時，fallback 到當前可見 transcript（`final + interim`），避免 cleanup 因空字串被跳過。
 - SenseVoice WS client 現在把 iPhone AudioWorklet 的極細 PCM frames 聚合成約 100ms / 3200 bytes 才送出，停止時會先 flush 剩餘 audio 再送 `END`，debug row 顯示 `end` / `ack` 用嚟確認 backend finalize handshake。
 - **已知限制**：NordVPN 等 VPN 會在 DNS 層 block `<your-domain>` 的 domain，導致 fetch / websocket 中斷。使用時需關閉 VPN。
-- source 已收斂為 `/ws/transcribe-v2` 唯一 STT route；production 尚待一次有意識的 redeploy 才會移除舊 route。
+- `/ws/transcribe-v2` 已是 source 與 production 唯一 STT route；legacy REST / v1 WS 均由 public production 移除（404）。
 - **主畫面 UI（`uixi` 本地工作樹，未 deploy）**：改為「柔和生活風」— 暖米白背景、綠色 accent、白色圓角卡片。整理模式 / 語言模式 selector 由 settings drawer 移到主畫面常駐（native `<select>`，`aria-label` = 整理模式 / 語言模式）；預設整理模式改為 `semantic`（智能整理）。Settings gear 只剩 mock + haptics 兩個 toggle。即時聽寫卡加錄音計時器（`mm:ss`）；智能整理結果卡的複製 / 清除為卡內右上角小 icon。底部：中央綠色 mic 大按鈕（唯一 tap-to-toggle 錄音控制）+ 右側「歷史紀錄」按鈕（點擊只彈「歷史紀錄即將推出」placeholder，無儲存邏輯）。debug 遙測列改為只在 `import.meta.env.DEV` 顯示（`vite build` production bundle 已剝除，Vitest 下仍在故 `end=1 ack=1` regression 續綠）。所有錄音 / SenseVoice / Gemini / cleanup / stop-finalize 邏輯零改動。
 
 ## 3. Area Status
@@ -290,9 +290,10 @@
 
 ## 6. Next Steps
 
-1. **SenseVoice v2-only rollout（待 Ben 明確確認 deploy）**
-   - source / local ARM64 image `aityping-sensevoice:latest@sha256:12716dfa…` 已 build；32 SenseVoice tests、isolated v2 token → PCM → `END` → `end_ack` smoke、legacy routes `404` 均通過。
-   - production 仍跑舊 image `569c8a63d8c8`；下一步若 deploy，先以 Compose recreate，再驗 `/ping`、backend-minted token → public v2 WS、legacy paths `404`；deploy 後才可視為 legacy route 已由 production 移除。
+1. **SenseVoice v2-only rollout（✅ 完成，2026-07-14）**
+   - `uiux` commit `56c5678792b8` 已 push；Compose rebuild / recreate backend + SenseVoice，兩個 running image ID 均等於剛 build image。
+   - local + public `/ping` / backend health 均 200；public legacy `/transcribe` 404；backend-minted browser-shaped public v2 WS 完成 PCM → `END` → `end_ack`。
+   - GitHub Pages workflow `29319077203` 成功，部署 commit `56c5678792b8`；因本 commit 無 `frontend/**` 改動，按 workflow dispatch 手動觸發。
    - full FunASR host / Nova caches 已清除；local `sensevoice/venv` 已以 streaming-only requirements 重建。
 
 2. **HF CPU Docker Space migration（⏸️ 暫停）**
